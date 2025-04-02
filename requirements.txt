@@ -2,4 +2,5 @@ openai
 requests
 Flask 
 flask_cors
- 
+gunicorn
+
