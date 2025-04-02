@@ -36,7 +36,7 @@ def Image():
         with open(image_path, "wb") as f:
             f.write(image_data)
         
-        return jsonify({"image_url": f"http://https://chatbotwithimagebackend.onrender.com/{image_path}"})
+        return jsonify({"image_url": f"https://chatbotwithimagebackend.onrender.com/{image_path}"})
         os.remove(image_data)
          
     else:
