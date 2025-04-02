@@ -6,7 +6,7 @@ import os
 app=Flask(__name__)
 CORS(app)
  
-HF_API_KEY=os.getenv(HFACCESKEY)
+HF_API_KEY=os.getenv("HFACCESKEY")
 API_KEY = "riXezrVqPczSVIcHnsqxlsFkiKFiiyQu"
 url = "https://api.deepinfra.com/v1/openai/chat/completions"
  
