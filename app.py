@@ -16,7 +16,7 @@ CHAT_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
 
 # ======== IMAGE GENERATION (BASE64) ========
 @app.route("/Image", methods=["POST"])
-def generate_image():
+def Image():
     data = request.json
     prompt = data.get("message", "").strip()
     if not prompt:
