@@ -25,8 +25,14 @@ def handle_options():
         response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
         response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
         return response
+# =====Home Route=======
+@app.route("/", methods=["GET"])
+def home():
+    return "Backend is running!", 200
+
 
 # ======== IMAGE GENERATION ========
+
 @app.route("/image", methods=["POST"])
 def image():
     data = request.json
