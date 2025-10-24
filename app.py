@@ -15,8 +15,8 @@ HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-d
 CHAT_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
 
 # ======== IMAGE GENERATION (BASE64) ========
-@app.route("/Image", methods=["POST"])
-def Image():
+@app.route("/image", methods=["POST"])
+def image():
     data = request.json
     prompt = data.get("message", "").strip()
     if not prompt:
