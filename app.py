@@ -6,16 +6,16 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-HF_API_KEY = os.getenv("HFACCESKEY")
+# ✅ Use the correct environment variable name (set this in Render)
+HF_API_KEY = os.getenv("HF_API_KEY")
 
-# Real, open, working Hugging Face Spaces
+# ✅ Real Hugging Face model endpoints
 HF_CHAT_URL = "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium"
-
 HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
-
 HF_MODIFY_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-inpainting"
+
 # =======================================================
-# Chat Endpoint
+# 1️⃣ Chat Endpoint
 # =======================================================
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -25,13 +25,23 @@ def chat():
         if not user_input:
             return jsonify({"error": "Missing message"}), 400
 
-        payload = {"data": [user_input]}
-        response = requests.post(HF_CHAT_URL, json=payload, timeout=60)
+        headers = {
+            "Authorization": f"Bearer {HF_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"inputs": user_input}
+        response = requests.post(HF_CHAT_URL, headers=headers, json=payload, timeout=60)
+
         if response.status_code != 200:
             return jsonify({"error": f"HF Chat error: {response.text}"}), response.status_code
 
         result = response.json()
-        reply = result.get("data", ["No response"])[0]
+        if isinstance(result, list) and len(result) > 0 and "generated_text" in result[0]:
+            reply = result[0]["generated_text"]
+        else:
+            reply = "No valid response received."
+
         return jsonify({"reply": reply})
 
     except Exception as e:
@@ -39,7 +49,7 @@ def chat():
 
 
 # =======================================================
-# Image Generation Endpoint
+# 2️⃣ Image Generation Endpoint
 # =======================================================
 @app.route("/generate_image", methods=["POST"])
 def generate_image():
@@ -49,13 +59,20 @@ def generate_image():
         if not prompt:
             return jsonify({"error": "Missing message"}), 400
 
-        payload = {"data": [prompt]}
-        response = requests.post(HF_IMAGE_URL, json=payload, timeout=120)
+        headers = {
+            "Authorization": f"Bearer {HF_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"inputs": prompt}
+        response = requests.post(HF_IMAGE_URL, headers=headers, json=payload, timeout=120)
+
         if response.status_code != 200:
             return jsonify({"error": f"HF Image error: {response.text}"}), response.status_code
 
         result = response.json()
-        image_data = result.get("data", [None])[0]
+        # Some models return base64 image bytes in 'data' or 'generated_image'
+        image_data = result if isinstance(result, list) else result.get("data", [None])[0]
         return jsonify({"image": image_data})
 
     except Exception as e:
@@ -63,7 +80,7 @@ def generate_image():
 
 
 # =======================================================
-# Image Modification (Inpainting)
+# 3️⃣ Image Modification (Inpainting)
 # =======================================================
 @app.route("/modify_image", methods=["POST"])
 def modify_image():
@@ -74,23 +91,35 @@ def modify_image():
         if not image_url or not instruction:
             return jsonify({"error": "Missing fields"}), 400
 
-        payload = {"data": [image_url, instruction]}
-        response = requests.post(HF_MODIFY_URL, json=payload, timeout=120)
+        headers = {
+            "Authorization": f"Bearer {HF_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"inputs": {"image": image_url, "prompt": instruction}}
+        response = requests.post(HF_MODIFY_URL, headers=headers, json=payload, timeout=120)
+
         if response.status_code != 200:
             return jsonify({"error": f"HF Modify error: {response.text}"}), response.status_code
 
         result = response.json()
-        modified_image = result.get("data", [None])[0]
+        modified_image = result if isinstance(result, list) else result.get("data", [None])[0]
         return jsonify({"modified_image": modified_image})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
+# =======================================================
+# 4️⃣ Health Check
+# =======================================================
 @app.route("/")
 def home():
     return jsonify({"status": "Backend running ✅"})
 
 
+# =======================================================
+# Run Server
+# =======================================================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)
