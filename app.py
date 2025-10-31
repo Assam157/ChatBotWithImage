@@ -13,10 +13,10 @@ HF_API_KEY = os.getenv("HFACCESKEY")  # Hugging Face API Key
 def chat():
     try:
         data = request.get_json()
-        user_input = data.get("prompt", "")
+        user_input = data.get("messages", "")
 
         if not user_input:
-            return jsonify({"error": "Missing prompt"}), 400
+            return jsonify({"error": "Missing message"}), 400
 
         # Correct Hugging Face Space inference endpoint
           hf_url = "https://huggingface.co/spaces/abidlabs/ChatGPT-mini/api/predict/"
@@ -51,9 +51,9 @@ def chat():
 def generate_image():
     try:
         data = request.get_json()
-        prompt = data.get("prompt", "")
+         message = data.get("messages", "")
 
-        payload = {"data": [prompt]}
+        payload = {"data": [messaage]}
         response = requests.post(
             "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
             json=payload,
