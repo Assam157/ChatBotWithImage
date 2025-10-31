@@ -30,7 +30,7 @@ def chat():
 
         headers = {
             "Authorization": f"Bearer {HF_TOKEN}",
-            "Content-Type": "application/json"
+            "Accept": "application/json"
         }
 
         payload = {
