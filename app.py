@@ -7,7 +7,7 @@ app = Flask(__name__)
 CORS(app)
 
 # ✅ Use the correct environment variable name (set this in Render)
-HF_API_KEY = os.getenv("HF_API_KEY")
+HF_API_KEY = os.getenv("HFACESSKEY")
 
 # ✅ Real Hugging Face model endpoints
 HF_CHAT_URL = "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium"
