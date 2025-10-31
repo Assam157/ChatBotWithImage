@@ -22,7 +22,7 @@ def chat():
             return jsonify({"error": "Missing message"}), 400
 
         # ✅ Public HF Space that allows chat
-        hf_url = "https://huggingface.co/spaces/abidlabs/ChatGPT-mini/api/predict/"
+        hf_url = "https://abidlabs-chatgpt-mini.hf.space/run/predict"
 
         payload = {"data": [user_input]}
         headers = {"Content-Type": "application/json"}
