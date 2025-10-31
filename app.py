@@ -64,9 +64,6 @@ def image():
 # ===== IMAGE MODIFICATION (img2img) =====
 @app.route("/image_modify", methods=["POST"])
 def image_modify():
-    """
-    Accepts a user-uploaded image and a prompt to modify it.
-    """
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
 
@@ -79,30 +76,32 @@ def image_modify():
     os.makedirs("uploads", exist_ok=True)
     os.makedirs("static", exist_ok=True)
 
-    # Save uploaded image
     upload_path = os.path.join("uploads", f"{uuid.uuid4()}_{file.filename}")
     file.save(upload_path)
 
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+    headers = {
+        "Authorization": f"Bearer {HF_API_KEY}",
+        "Accept": "image/png"  # 👈 crucial line
+    }
+
     try:
         with open(upload_path, "rb") as img_file:
             response = requests.post(
-                HF_IMAGE_MODIFY_URL,
+                "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix",
                 headers=headers,
-                files={"image": img_file},
                 data={"inputs": prompt},
+                files={"image": img_file},
                 timeout=90
             )
 
         if response.status_code != 200:
-            return jsonify({"error": "Image modification failed", "details": response.text}), response.status_code
+            return jsonify({
+                "error": "Image modification failed",
+                "details": response.text
+            }), response.status_code
 
-        try:
-            image_base64 = response.json()[0]["generated_image"]
-            image_bytes = base64.b64decode(image_base64)
-        except Exception:
-            image_bytes = response.content
-
+        # Save the raw image bytes
+        image_bytes = response.content
         filename = f"modified_{uuid.uuid4()}.png"
         path = os.path.join("static", filename)
         with open(path, "wb") as f:
@@ -113,6 +112,7 @@ def image_modify():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 # ===== CHAT =====
 @app.route("/chat", methods=["POST"])
