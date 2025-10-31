@@ -8,6 +8,7 @@ CORS(app)  # ✅ Allow frontend access
 
 HF_API_KEY = os.getenv("HFACCESKEY")  # Optional Hugging Face API Key
 HF_IMAGEGEN_URL="https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
+MOD_API="https://huggingface.co/spaces/JonasKlose/StableDiffusionInpainting/api/predict/"
 # =======================================================
 # 1️⃣ Chat Endpoint — Using DialoGPT (Free HF Space)
 # =======================================================
@@ -98,7 +99,7 @@ def modify_image():
         payload = {"data": [image_url, instruction]}
         headers = {"Content-Type": "application/json"}
 
-        hf_url = "https://huggingface.co/spaces/JonasKlose/StableDiffusionInpainting/api/predict/"
+        hf_url =  MOD_API
 
         response = requests.post(hf_url, headers=headers, json=payload, timeout=120)
 
