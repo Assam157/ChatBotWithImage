@@ -9,7 +9,7 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ===== API KEYS =====
-HF_API_KEY = os.getenv("HFACCESKEY")  # Hugging Face API Key
+HF_API_KEY = os.getenv("REACT_APP_HF_ACCESS_TOKEN")  # Hugging Face API Key
 API_KEY = os.getenv("DEEPNAME_KEY", "riXezrVqPczSVIcHnsqxlsFkiKFiiyQu")  # DeepInfra/OpenAI Key
 
 HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
