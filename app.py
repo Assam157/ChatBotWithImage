@@ -10,7 +10,7 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "https://chatbotwithimagenew.onrender.com"}})
 
 # ✅ Hugging Face Access Token (set in Render Environment Variables)
-HF_TOKEN = os.getenv("HFACESSTOKEN")
+HF_TOKEN = os.getenv("lonely")
 
 # ✅ Model Endpoints
 CHAT_MODEL = "HuggingFaceH4/zephyr-7b-beta"
