@@ -51,7 +51,7 @@ def chat():
 def generate_image():
     try:
         data = request.get_json()
-         message = data.get("messages", "")
+        message = data.get("messages", "")
 
         payload = {"data": [messaage]}
         response = requests.post(
@@ -67,8 +67,8 @@ def generate_image():
         image_url = result.get("data", [None])[0]
         return jsonify({"image_url": image_url})
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
 
 # =======================================================
