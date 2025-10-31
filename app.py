@@ -8,16 +8,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 
 # ===== ENABLE CORS for your frontend =====
-CORS(app, resources={
-    r"/*": {
-        "origins": [
-            "https://chatbotwithimagenew.onrender.com",
-            "http://localhost:3000"
-        ],
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
-    }
-})
+CORS(app, resources={r"/*": {"origins": "*"}})  # ✅ Allow all origins
 
 # ===== API KEYS =====
 HF_API_KEY = os.getenv("HFACCESKEY", "")  # Your Hugging Face access token (set in Render dashboard)
