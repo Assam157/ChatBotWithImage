@@ -5,7 +5,7 @@ import requests
 app = Flask(__name__)
 CORS(app)  # ✅ Allow frontend access
 
-
+HF_API_KEY = os.getenv("HFACCESKEY")  # Hugging Face API Key
 # =======================================================
 # 1️⃣ Chat Endpoint — Using DialoGPT (No Token Needed)
 # =======================================================
@@ -55,7 +55,7 @@ def generate_image():
 
         payload = {"data": [prompt]}
         response = requests.post(
-            "https://huggingface.co/spaces/stabilityai/stable-diffusion/api/predict/",
+            "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
             json=payload,
             timeout=120
         )
