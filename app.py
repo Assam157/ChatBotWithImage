@@ -1,120 +1,106 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import requests
-import os
+import requests, os
 
 app = Flask(__name__)
 CORS(app)
 
-# =======================================================
-# 🔐 Secure API Config
-# =======================================================
-HF_API_KEY = os.getenv("HFACCESKEY") 
-HEADERS = {
-    "Authorization": f"Bearer {HF_API_KEY}",
-    "Content-Type": "application/json"
-}
+# ====== CONFIGURATION ======
+HF_API_KEY = os.getenv("HFACCESKEY")  # set this in Render environment
+if not HF_API_KEY:
+    raise ValueError("❌ Missing HF_API_KEY in Render Environment Variables!")
 
-# Model endpoints
-CHAT_URL = "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium"
-IMAGE_GEN_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
-INPAINT_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-inpainting"
+HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
 
-# =======================================================
-# 💬 CHAT ENDPOINT
-# =======================================================
+CHAT_MODEL = "microsoft/DialoGPT-medium"
+IMG_GEN_MODEL = "stabilityai/stable-diffusion-2"
+IMG_MOD_MODEL = "runwayml/stable-diffusion-inpainting"
+
+# ====== 1️⃣ CHAT ENDPOINT ======
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
         data = request.get_json()
-        message = data.get("message", "")
-        if not message:
-            return jsonify({"error": "Missing message"}), 400
+        user_input = data.get("message", "")
+        if not user_input:
+            return jsonify({"error": "Missing 'message'"}), 400
 
-        payload = {"inputs": message}
-        response = requests.post(CHAT_URL, headers=HEADERS, json=payload, timeout=60)
+        payload = {"inputs": user_input}
+        r = requests.post(
+            f"https://api-inference.huggingface.co/models/{CHAT_MODEL}",
+            headers=HEADERS, json=payload, timeout=60
+        )
 
-        if response.status_code != 200:
-            return jsonify({"error": f"HuggingFace chat error: {response.text}"}), response.status_code
+        if r.status_code != 200:
+            return jsonify({"error": f"HuggingFace chat error: {r.text}"}), r.status_code
 
-        result = response.json()
-        # Extract model reply
-        reply = result[0]["generated_text"] if isinstance(result, list) and len(result) > 0 else "No reply"
+        result = r.json()
+        reply = result[0]["generated_text"] if isinstance(result, list) else str(result)
         return jsonify({"reply": reply})
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# =======================================================
-# 🖼️ IMAGE GENERATION ENDPOINT
-# =======================================================
+# ====== 2️⃣ IMAGE GENERATION ENDPOINT ======
 @app.route("/generate_image", methods=["POST"])
 def generate_image():
     try:
         data = request.get_json()
         prompt = data.get("message", "")
         if not prompt:
-            return jsonify({"error": "Missing message"}), 400
+            return jsonify({"error": "Missing 'message'"}), 400
 
         payload = {"inputs": prompt}
-        response = requests.post(IMAGE_GEN_URL, headers=HEADERS, json=payload, timeout=120)
+        r = requests.post(
+            f"https://api-inference.huggingface.co/models/{IMG_GEN_MODEL}",
+            headers=HEADERS, json=payload, timeout=120
+        )
 
-        if response.status_code != 200:
-            return jsonify({"error": f"HuggingFace image gen error: {response.text}"}), response.status_code
+        if r.status_code != 200:
+            return jsonify({"error": f"HuggingFace image gen error: {r.text}"}), r.status_code
 
-        image_data = response.content
-        # Return image bytes in base64 if needed
-        import base64
-        image_b64 = base64.b64encode(image_data).decode("utf-8")
-
-        return jsonify({"image_base64": image_b64})
-
+        return jsonify(r.json())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# =======================================================
-# 🧠 IMAGE MODIFICATION (INPAINTING)
-# =======================================================
+# ====== 3️⃣ IMAGE MODIFICATION ENDPOINT ======
 @app.route("/modify_image", methods=["POST"])
 def modify_image():
     try:
         data = request.get_json()
-        image_b64 = data.get("image_base64", "")
+        image_url = data.get("image_url")
         prompt = data.get("instruction", "")
 
-        if not image_b64 or not prompt:
-            return jsonify({"error": "Missing fields"}), 400
+        if not image_url or not prompt:
+            return jsonify({"error": "Missing 'image_url' or 'instruction'"}), 400
 
-        import base64
-        image_bytes = base64.b64decode(image_b64)
-        files = {"file": ("image.png", image_bytes, "image/png")}
-        payload = {"inputs": prompt}
+        payload = {
+            "inputs": {
+                "image": image_url,
+                "prompt": prompt
+            }
+        }
 
-        response = requests.post(INPAINT_URL, headers={"Authorization": f"Bearer {HF_API_KEY}"}, files=files, data=payload, timeout=120)
+        r = requests.post(
+            f"https://api-inference.huggingface.co/models/{IMG_MOD_MODEL}",
+            headers=HEADERS, json=payload, timeout=120
+        )
 
-        if response.status_code != 200:
-            return jsonify({"error": f"HuggingFace modify error: {response.text}"}), response.status_code
+        if r.status_code != 200:
+            return jsonify({"error": f"HuggingFace modify error: {r.text}"}), r.status_code
 
-        mod_image_data = response.content
-        mod_image_b64 = base64.b64encode(mod_image_data).decode("utf-8")
-        return jsonify({"modified_image_base64": mod_image_b64})
-
+        return jsonify(r.json())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# =======================================================
-# 🏠 ROOT ROUTE
-# =======================================================
+# ====== ROOT ROUTE ======
 @app.route("/")
 def home():
-    return jsonify({"status": "✅ Flask backend is running securely!"})
+    return jsonify({"status": "Backend is running ✅"})
 
 
-# =======================================================
-# 🚀 RUN SERVER
-# =======================================================
+# ====== RUN APP ======
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
