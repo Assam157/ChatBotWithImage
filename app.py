@@ -8,44 +8,52 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# ================== API URLs ==================
-IMAGE_GEN_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
-IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix"
+# ===== API KEYS =====
+HF_API_KEY = os.getenv("HFACCESKEY")  # Hugging Face API Key
+API_KEY = os.getenv("DEEPNAME_KEY", "riXezrVqPczSVIcHnsqxlsFkiKFiiyQu")  # DeepInfra/OpenAI Key
+
+HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
+HF_IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-refiner-1.0"
 CHAT_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
 
-# ================== STATIC SERVE ==================
+# ===== Serve static folder for saved images =====
 @app.route("/static/<path:filename>")
 def serve_static(filename):
     return send_from_directory("static", filename)
 
-
+# ===== ROOT =====
 @app.route("/", methods=["GET"])
 def home():
-    return "✅ Flask Backend Running — Image + Modify + Chat Active!", 200
+    return "Backend running!", 200
 
-
-# ================== IMAGE GENERATION ==================
+# ===== IMAGE GENERATION =====
 @app.route("/image", methods=["POST"])
-def generate_image():
+def image():
+    data = request.json
+    prompt = data.get("message", "").strip() if data else ""
+    if not prompt:
+        return jsonify({"error": "No Prompt Provided"}), 400
+
+    headers = {"Authorization": f"Bearer {HF_API_KEY}", "Content-Type": "application/json"}
+    payload = {"inputs": prompt}
+
     try:
-        data = request.json
-        prompt = data.get("message", "").strip() if data else ""
-        if not prompt:
-            return jsonify({"error": "No prompt provided"}), 400
-
-        payload = {"inputs": prompt}
-        headers = {"Accept": "application/json"}  # Important for Hugging Face
-
-        response = requests.post(IMAGE_GEN_URL, headers=headers, json=payload, timeout=90)
-        if not response.ok:
+        response = requests.post(HF_IMAGE_URL, json=payload, headers=headers, timeout=60)
+        if response.status_code != 200:
             return jsonify({"error": "Image generation failed", "details": response.text}), response.status_code
 
-        # Save image
+        # Hugging Face can return JSON with base64 or raw bytes
+        try:
+            image_base64 = response.json()[0]["generated_image"]
+            image_bytes = base64.b64decode(image_base64)
+        except Exception:
+            image_bytes = response.content
+
         os.makedirs("static", exist_ok=True)
         filename = f"{uuid.uuid4()}.png"
         path = os.path.join("static", filename)
         with open(path, "wb") as f:
-            f.write(response.content)
+            f.write(image_bytes)
 
         image_url = f"https://chatbotwithimagebackend.onrender.com/static/{filename}"
         return jsonify({"image_url": image_url}), 200
@@ -53,39 +61,52 @@ def generate_image():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# ================== IMAGE MODIFICATION ==================
+# ===== IMAGE MODIFICATION (img2img) =====
 @app.route("/image_modify", methods=["POST"])
 def image_modify():
+    """
+    Accepts a user-uploaded image and a prompt to modify it.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+    prompt = request.form.get("prompt", "").strip()
+
+    if not prompt:
+        return jsonify({"error": "No prompt provided"}), 400
+
+    os.makedirs("uploads", exist_ok=True)
+    os.makedirs("static", exist_ok=True)
+
+    # Save uploaded image
+    upload_path = os.path.join("uploads", f"{uuid.uuid4()}_{file.filename}")
+    file.save(upload_path)
+
+    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
     try:
-        if "file" not in request.files:
-            return jsonify({"error": "No file uploaded"}), 400
-        file = request.files["file"]
-
-        prompt = request.form.get("prompt", "").strip()
-        if not prompt:
-            return jsonify({"error": "No prompt provided"}), 400
-
-        os.makedirs("uploads", exist_ok=True)
-        os.makedirs("static", exist_ok=True)
-        upload_path = os.path.join("uploads", f"{uuid.uuid4()}_{file.filename}")
-        file.save(upload_path)
-
-        # Prepare multipart form-data
         with open(upload_path, "rb") as img_file:
-            files = {"image": img_file}
-            data = {"inputs": prompt}
-            headers = {"Accept": "application/json"}
+            response = requests.post(
+                HF_IMAGE_MODIFY_URL,
+                headers=headers,
+                files={"image": img_file},
+                data={"inputs": prompt},
+                timeout=90
+            )
 
-            response = requests.post(IMAGE_MODIFY_URL, headers=headers, files=files, data=data, timeout=90)
-
-        if not response.ok:
+        if response.status_code != 200:
             return jsonify({"error": "Image modification failed", "details": response.text}), response.status_code
+
+        try:
+            image_base64 = response.json()[0]["generated_image"]
+            image_bytes = base64.b64decode(image_base64)
+        except Exception:
+            image_bytes = response.content
 
         filename = f"modified_{uuid.uuid4()}.png"
         path = os.path.join("static", filename)
         with open(path, "wb") as f:
-            f.write(response.content)
+            f.write(image_bytes)
 
         image_url = f"https://chatbotwithimagebackend.onrender.com/static/{filename}"
         return jsonify({"modified_image_url": image_url}), 200
@@ -93,37 +114,31 @@ def image_modify():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# ================== CHAT COMPLETIONS ==================
+# ===== CHAT =====
 @app.route("/chat", methods=["POST"])
 def chat():
+    data = request.json
+    prompt = data.get("message", "").strip() if data else ""
+    if not prompt:
+        return jsonify({"error": "No Prompt Provided"}), 400
+
+    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+    payload = {
+        "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "messages": [{"role": "user", "content": prompt}]
+    }
+
     try:
-        data = request.json
-        message = data.get("message", "").strip() if data else ""
-        if not message:
-            return jsonify({"error": "No message provided"}), 400
-
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
-            "messages": [{"role": "user", "content": message}]
-        }
-
-        response = requests.post(CHAT_URL, headers=headers, json=payload, timeout=60)
-        if not response.ok:
-            return jsonify({"error": "Chat API failed", "details": response.text}), response.status_code
-
-        data = response.json()
-        reply = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-
-        return jsonify({"reply": reply or "No reply"}), 200
-
+        response = requests.post(CHAT_URL, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
+        reply = response.json()["choices"][0]["message"]["content"].strip()
+        return jsonify({"reply": reply}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# ================== RUN SERVER ==================
+# ===== RUN APP =====
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(debug=True, host="0.0.0.0", port=port)
+
 
