@@ -9,10 +9,11 @@ CORS(app)
 HF_API_KEY = os.getenv("HFACCESKEY")
 
 # Real, open, working Hugging Face Spaces
-HF_CHAT_URL = "https://abidlabs-chatgpt-mini.hf.space/run/predict"
-HF_IMAGE_URL = "https://stabilityai-stable-diffusion-2.hf.space/run/predict"
-HF_MODIFY_URL = "https://JonasKlose-StableDiffusionInpainting.hf.space/run/predict"
+HF_CHAT_URL = "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium"
 
+HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
+
+HF_MODIFY_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-inpainting"
 # =======================================================
 # Chat Endpoint
 # =======================================================
