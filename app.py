@@ -1,13 +1,16 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
+import os
 
 app = Flask(__name__)
 CORS(app)  # ✅ Allow frontend access
 
-HF_API_KEY = os.getenv("HFACCESKEY")  # Hugging Face API Key
+HF_API_KEY = os.getenv("HFACCESKEY")  # Optional Hugging Face API Key
+
+
 # =======================================================
-# 1️⃣ Chat Endpoint — Using DialoGPT (No Token Needed)
+# 1️⃣ Chat Endpoint — Using DialoGPT (Free HF Space)
 # =======================================================
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -18,7 +21,7 @@ def chat():
         if not user_input:
             return jsonify({"error": "Missing message"}), 400
 
-        # Correct Hugging Face Space inference endpoint
+        # ✅ Public HF Space that allows chat
         hf_url = "https://huggingface.co/spaces/abidlabs/ChatGPT-mini/api/predict/"
 
         payload = {"data": [user_input]}
@@ -30,9 +33,8 @@ def chat():
             return jsonify({"error": f"HuggingFace chat error: {response.text}"}), response.status_code
 
         result = response.json()
-
-        # Extract reply properly
         reply = None
+
         if isinstance(result, dict) and "data" in result:
             reply = result["data"][0]
         else:
@@ -45,30 +47,40 @@ def chat():
 
 
 # =======================================================
-# 2️⃣ Image Generation Endpoint — Stable Diffusion (No Token)
+# 2️⃣ Image Generation Endpoint — Stable Diffusion (Free)
 # =======================================================
 @app.route("/generate_image", methods=["POST"])
 def generate_image():
     try:
         data = request.get_json()
-        message = data.get("messages", "")
+        message = data.get("message", "")
 
-        payload = {"data": [messaage]}
-        response = requests.post(
-            "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
-            json=payload,
-            timeout=120
-        )
+        if not message:
+            return jsonify({"error": "Missing message"}), 400
+
+        payload = {"data": [message]}
+        headers = {"Content-Type": "application/json"}
+
+        # ✅ Free public Stable Diffusion HF space
+        hf_url = "https://huggingface.co/spaces/stabilityai/stable-diffusion-2/api/predict/"
+
+        response = requests.post(hf_url, headers=headers, json=payload, timeout=120)
 
         if response.status_code != 200:
-            return jsonify({"error": f"HuggingFace image gen error: {response.text}"}), 500
+            return jsonify({"error": f"HuggingFace image gen error: {response.text}"}), response.status_code
 
         result = response.json()
-        image_url = result.get("data", [None])[0]
+        image_url = None
+
+        if isinstance(result, dict) and "data" in result:
+            image_url = result["data"][0]
+        else:
+            image_url = "No image returned."
+
         return jsonify({"image_url": image_url})
 
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # =======================================================
@@ -81,18 +93,27 @@ def modify_image():
         image_url = data.get("image_url", "")
         instruction = data.get("instruction", "")
 
+        if not image_url or not instruction:
+            return jsonify({"error": "Missing fields"}), 400
+
         payload = {"data": [image_url, instruction]}
-        response = requests.post(
-            "https://huggingface.co/spaces/JonasKlose/StableDiffusionInpainting/api/predict/",
-            json=payload,
-            timeout=120
-        )
+        headers = {"Content-Type": "application/json"}
+
+        hf_url = "https://huggingface.co/spaces/JonasKlose/StableDiffusionInpainting/api/predict/"
+
+        response = requests.post(hf_url, headers=headers, json=payload, timeout=120)
 
         if response.status_code != 200:
-            return jsonify({"error": f"HuggingFace modify error: {response.text}"}), 500
+            return jsonify({"error": f"HuggingFace modify error: {response.text}"}), response.status_code
 
         result = response.json()
-        modified_url = result.get("data", [None])[0]
+        modified_url = None
+
+        if isinstance(result, dict) and "data" in result:
+            modified_url = result["data"][0]
+        else:
+            modified_url = "No modified image returned."
+
         return jsonify({"modified_image_url": modified_url})
 
     except Exception as e:
@@ -112,4 +133,3 @@ def home():
 # =======================================================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
-
