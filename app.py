@@ -13,7 +13,7 @@ HF_API_KEY = os.getenv("HFACCESKEY")  # Hugging Face API Key
 API_KEY = os.getenv("DEEPNAME_KEY", "riXezrVqPczSVIcHnsqxlsFkiKFiiyQu")  # DeepInfra/OpenAI Key
 
 HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-HF_IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-inpainting"
+HF_IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix"
 CHAT_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
 
 # ===== Serve static folder for saved images =====
