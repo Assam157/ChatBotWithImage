@@ -13,7 +13,7 @@ HF_API_KEY = os.getenv("HFACCESKEY")  # Hugging Face API Key
 def chat():
     try:
         data = request.get_json()
-        user_input = data.get("messages", "")
+        user_input = data.get("message", "")
 
         if not user_input:
             return jsonify({"error": "Missing message"}), 400
