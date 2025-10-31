@@ -9,9 +9,9 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ===== API CONFIG =====
-HF_API_KEY = os.getenv("HF_API_KEY")  # optional for free models
+HF_API_KEY = os.getenv("HF_API_KEY")  # optional (if you have a Hugging Face token)
 HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
-HF_IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
+HF_IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-img2img"
 CHAT_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
 DEEPNAME_KEY = os.getenv("DEEPNAME_KEY", "riXezrVqPczSVIcHnsqxlsFkiKFiiyQu")
 
@@ -20,10 +20,10 @@ DEEPNAME_KEY = os.getenv("DEEPNAME_KEY", "riXezrVqPczSVIcHnsqxlsFkiKFiiyQu")
 def serve_static(filename):
     return send_from_directory("static", filename)
 
-# ===== ROOT =====
+
 @app.route("/", methods=["GET"])
 def home():
-    return "✅ Backend running — Stable Diffusion 2 Image Modify + Chat Ready", 200
+    return "✅ Backend running — Stable Diffusion 2 + Img2Img + Chat ready!", 200
 
 
 # ===== IMAGE GENERATION =====
@@ -37,47 +37,32 @@ def image():
     headers = {"Authorization": f"Bearer {HF_API_KEY}"} if HF_API_KEY else {}
     payload = {"inputs": prompt}
 
-    try:
-        response = requests.post(HF_IMAGE_URL, headers=headers, json=payload, timeout=90)
+    response = requests.post(HF_IMAGE_URL, headers=headers, json=payload, timeout=90)
 
-        if response.status_code != 200:
-            return jsonify({
-                "error": "Image generation failed",
-                "details": response.text
-            }), response.status_code
+    if response.status_code != 200:
+        return jsonify({
+            "error": "Image generation failed",
+            "details": response.text
+        }), response.status_code
 
-        try:
-            data = response.json()
-            image_base64 = data[0]["image"] if isinstance(data, list) else data.get("image")
-            image_bytes = base64.b64decode(image_base64)
-        except Exception:
-            image_bytes = response.content
+    os.makedirs("static", exist_ok=True)
+    filename = f"{uuid.uuid4()}.png"
+    path = os.path.join("static", filename)
+    with open(path, "wb") as f:
+        f.write(response.content)
 
-        os.makedirs("static", exist_ok=True)
-        filename = f"{uuid.uuid4()}.png"
-        path = os.path.join("static", filename)
-        with open(path, "wb") as f:
-            f.write(image_bytes)
-
-        image_url = f"https://chatbotwithimagebackend.onrender.com/static/{filename}"
-        return jsonify({"image_url": image_url}), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    image_url = f"https://chatbotwithimagebackend.onrender.com/static/{filename}"
+    return jsonify({"image_url": image_url}), 200
 
 
-# ===== IMAGE MODIFICATION (img2img) =====
+# ===== IMAGE MODIFICATION =====
 @app.route("/image_modify", methods=["POST"])
 def image_modify():
-    """
-    Modify an uploaded image using Stable Diffusion 2 and a text prompt.
-    """
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
 
     file = request.files["file"]
     prompt = request.form.get("prompt", "").strip()
-
     if not prompt:
         return jsonify({"error": "No prompt provided"}), 400
 
@@ -87,49 +72,28 @@ def image_modify():
     upload_path = os.path.join("uploads", f"{uuid.uuid4()}_{file.filename}")
     file.save(upload_path)
 
-    with open(upload_path, "rb") as f:
-        image_bytes = f.read()
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-
     headers = {"Authorization": f"Bearer {HF_API_KEY}"} if HF_API_KEY else {}
-    payload = {
-        "inputs": prompt,
-        "image": image_b64,
-        "parameters": {
-            "guidance_scale": 7.5,
-            "num_inference_steps": 40
-        }
-    }
+    files = {"image": open(upload_path, "rb")}
+    data = {"inputs": prompt}
 
-    try:
-        response = requests.post(HF_IMAGE_MODIFY_URL, headers=headers, json=payload, timeout=90)
+    response = requests.post(HF_IMAGE_MODIFY_URL, headers=headers, files=files, data=data, timeout=90)
 
-        if response.status_code != 200:
-            return jsonify({
-                "error": "Image modification failed",
-                "details": response.text
-            }), response.status_code
+    if response.status_code != 200:
+        return jsonify({
+            "error": "Image modification failed",
+            "details": response.text
+        }), response.status_code
 
-        try:
-            data = response.json()
-            image_base64 = data[0]["image"] if isinstance(data, list) else data.get("image")
-            image_bytes = base64.b64decode(image_base64)
-        except Exception:
-            image_bytes = response.content  # fallback
+    filename = f"modified_{uuid.uuid4()}.png"
+    path = os.path.join("static", filename)
+    with open(path, "wb") as f:
+        f.write(response.content)
 
-        filename = f"modified_{uuid.uuid4()}.png"
-        path = os.path.join("static", filename)
-        with open(path, "wb") as f:
-            f.write(image_bytes)
-
-        image_url = f"https://chatbotwithimagebackend.onrender.com/static/{filename}"
-        return jsonify({"modified_image_url": image_url}), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    image_url = f"https://chatbotwithimagebackend.onrender.com/static/{filename}"
+    return jsonify({"modified_image_url": image_url}), 200
 
 
-# ===== CHAT ENDPOINT =====
+# ===== CHAT =====
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.json
@@ -143,16 +107,13 @@ def chat():
         "messages": [{"role": "user", "content": prompt}]
     }
 
-    try:
-        response = requests.post(CHAT_URL, headers=headers, json=payload, timeout=30)
-        response.raise_for_status()
-        reply = response.json()["choices"][0]["message"]["content"].strip()
-        return jsonify({"reply": reply}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    response = requests.post(CHAT_URL, headers=headers, json=payload, timeout=30)
+    response.raise_for_status()
+    reply = response.json()["choices"][0]["message"]["content"].strip()
+    return jsonify({"reply": reply}), 200
 
 
-# ===== RUN SERVER =====
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
+
