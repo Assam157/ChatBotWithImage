@@ -11,7 +11,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 # ===== API CONFIG =====
 HF_API_KEY = os.getenv("HF_API_KEY")  # optional (if you have a Hugging Face token)
 HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-HF_IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-img2img"
+HF_IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix"
 CHAT_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
 DEEPNAME_KEY = os.getenv("DEEPNAME_KEY", "riXezrVqPczSVIcHnsqxlsFkiKFiiyQu")
 
