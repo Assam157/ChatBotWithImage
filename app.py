@@ -13,7 +13,7 @@ HF_API_KEY = os.getenv("HFACCESKEY")  # Hugging Face API Key
 API_KEY = os.getenv("DEEPNAME_KEY", "riXezrVqPczSVIcHnsqxlsFkiKFiiyQu")  # DeepInfra/OpenAI Key
 
 HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-HF_IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix"
+HF_IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-refiner-1.0"
 CHAT_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
 
 # ===== Serve static folder for saved images =====
@@ -64,6 +64,9 @@ def image():
 # ===== IMAGE MODIFICATION (img2img) =====
 @app.route("/image_modify", methods=["POST"])
 def image_modify():
+    """
+    Accepts a user-uploaded image and a prompt to modify it.
+    """
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
 
@@ -76,32 +79,30 @@ def image_modify():
     os.makedirs("uploads", exist_ok=True)
     os.makedirs("static", exist_ok=True)
 
+    # Save uploaded image
     upload_path = os.path.join("uploads", f"{uuid.uuid4()}_{file.filename}")
     file.save(upload_path)
 
-    headers = {
-        "Authorization": f"Bearer {HF_API_KEY}",
-        "Accept": "image/png"  # 👈 crucial line
-    }
-
+    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
     try:
         with open(upload_path, "rb") as img_file:
             response = requests.post(
-                "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix",
+                HF_IMAGE_MODIFY_URL,
                 headers=headers,
-                data={"inputs": prompt},
                 files={"image": img_file},
+                data={"inputs": prompt},
                 timeout=90
             )
 
         if response.status_code != 200:
-            return jsonify({
-                "error": "Image modification failed",
-                "details": response.text
-            }), response.status_code
+            return jsonify({"error": "Image modification failed", "details": response.text}), response.status_code
 
-        # Save the raw image bytes
-        image_bytes = response.content
+        try:
+            image_base64 = response.json()[0]["generated_image"]
+            image_bytes = base64.b64decode(image_base64)
+        except Exception:
+            image_bytes = response.content
+
         filename = f"modified_{uuid.uuid4()}.png"
         path = os.path.join("static", filename)
         with open(path, "wb") as f:
@@ -112,7 +113,6 @@ def image_modify():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 # ===== CHAT =====
 @app.route("/chat", methods=["POST"])
@@ -140,5 +140,4 @@ def chat():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host="0.0.0.0", port=port)
-
 
