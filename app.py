@@ -9,7 +9,7 @@ CORS(app)
 # =======================================================
 # 🔐 Secure API Config
 # =======================================================
-HF_API_KEY = os.getenv("HFACESSKEY") 
+HF_API_KEY = os.getenv("HFACCESKEY") 
 HEADERS = {
     "Authorization": f"Bearer {HF_API_KEY}",
     "Content-Type": "application/json"
