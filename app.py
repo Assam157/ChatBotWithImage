@@ -9,7 +9,7 @@ CORS(app)
 # =======================================================
 # 🔐 Secure API Config
 # =======================================================
-HF_API_KEY = os.getenv("HF_API_KEY") or "your_huggingface_token_here"
+HF_API_KEY = os.getenv("HFACESSKEY") 
 HEADERS = {
     "Authorization": f"Bearer {HF_API_KEY}",
     "Content-Type": "application/json"
