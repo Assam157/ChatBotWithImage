@@ -4,42 +4,42 @@ import requests
 import os
 
 app = Flask(__name__)
-CORS(app)  # ✅ Allow frontend access
+CORS(app)
 
-HF_API_KEY = os.getenv("HFACCESKEY")  # Optional Hugging Face API Key
-HF_IMAGEGEN_URL="https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
-MOD_API="https://huggingface.co/spaces/JonasKlose/StableDiffusionInpainting/api/predict/"
 # =======================================================
-# 1️⃣ Chat Endpoint — Using DialoGPT (Free HF Space)
+# 🔐 Secure API Config
+# =======================================================
+HF_API_KEY = os.getenv("HF_API_KEY") or "your_huggingface_token_here"
+HEADERS = {
+    "Authorization": f"Bearer {HF_API_KEY}",
+    "Content-Type": "application/json"
+}
+
+# Model endpoints
+CHAT_URL = "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium"
+IMAGE_GEN_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
+INPAINT_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-inpainting"
+
+# =======================================================
+# 💬 CHAT ENDPOINT
 # =======================================================
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
         data = request.get_json()
-        user_input = data.get("message", "")
-
-        if not user_input:
+        message = data.get("message", "")
+        if not message:
             return jsonify({"error": "Missing message"}), 400
 
-        # ✅ Public HF Space that allows chat
-        hf_url = "https://abidlabs-chatgpt-mini.hf.space/run/predict"
-
-        payload = {"data": [user_input]}
-        headers = {"Content-Type": "application/json"}
-
-        response = requests.post(hf_url, headers=headers, json=payload, timeout=60)
+        payload = {"inputs": message}
+        response = requests.post(CHAT_URL, headers=HEADERS, json=payload, timeout=60)
 
         if response.status_code != 200:
             return jsonify({"error": f"HuggingFace chat error: {response.text}"}), response.status_code
 
         result = response.json()
-        reply = None
-
-        if isinstance(result, dict) and "data" in result:
-            reply = result["data"][0]
-        else:
-            reply = "No valid response received."
-
+        # Extract model reply
+        reply = result[0]["generated_text"] if isinstance(result, list) and len(result) > 0 else "No reply"
         return jsonify({"reply": reply})
 
     except Exception as e:
@@ -47,89 +47,74 @@ def chat():
 
 
 # =======================================================
-# 2️⃣ Image Generation Endpoint — Stable Diffusion (Free)
+# 🖼️ IMAGE GENERATION ENDPOINT
 # =======================================================
 @app.route("/generate_image", methods=["POST"])
 def generate_image():
     try:
         data = request.get_json()
-        message = data.get("message", "")
-
-        if not message:
+        prompt = data.get("message", "")
+        if not prompt:
             return jsonify({"error": "Missing message"}), 400
 
-        payload = {"data": [message]}
-        headers = {"Content-Type": "application/json"}
-
-        # ✅ Free public Stable Diffusion HF space
-        hf_url = HF_IMAGEGEN_URL
-
-        response = requests.post(hf_url, headers=headers, json=payload, timeout=120)
+        payload = {"inputs": prompt}
+        response = requests.post(IMAGE_GEN_URL, headers=HEADERS, json=payload, timeout=120)
 
         if response.status_code != 200:
             return jsonify({"error": f"HuggingFace image gen error: {response.text}"}), response.status_code
 
-        result = response.json()
-        image_url = None
+        image_data = response.content
+        # Return image bytes in base64 if needed
+        import base64
+        image_b64 = base64.b64encode(image_data).decode("utf-8")
 
-        if isinstance(result, dict) and "data" in result:
-            image_url = result["data"][0]
-        else:
-            image_url = "No image returned."
-
-        return jsonify({"image_url": image_url})
+        return jsonify({"image_base64": image_b64})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 # =======================================================
-# 3️⃣ Image Modification (Inpainting / Edit)
+# 🧠 IMAGE MODIFICATION (INPAINTING)
 # =======================================================
 @app.route("/modify_image", methods=["POST"])
 def modify_image():
     try:
         data = request.get_json()
-        image_url = data.get("image_url", "")
-        instruction = data.get("instruction", "")
+        image_b64 = data.get("image_base64", "")
+        prompt = data.get("instruction", "")
 
-        if not image_url or not instruction:
+        if not image_b64 or not prompt:
             return jsonify({"error": "Missing fields"}), 400
 
-        payload = {"data": [image_url, instruction]}
-        headers = {"Content-Type": "application/json"}
+        import base64
+        image_bytes = base64.b64decode(image_b64)
+        files = {"file": ("image.png", image_bytes, "image/png")}
+        payload = {"inputs": prompt}
 
-        hf_url =  MOD_API
-
-        response = requests.post(hf_url, headers=headers, json=payload, timeout=120)
+        response = requests.post(INPAINT_URL, headers={"Authorization": f"Bearer {HF_API_KEY}"}, files=files, data=payload, timeout=120)
 
         if response.status_code != 200:
             return jsonify({"error": f"HuggingFace modify error: {response.text}"}), response.status_code
 
-        result = response.json()
-        modified_url = None
-
-        if isinstance(result, dict) and "data" in result:
-            modified_url = result["data"][0]
-        else:
-            modified_url = "No modified image returned."
-
-        return jsonify({"modified_image_url": modified_url})
+        mod_image_data = response.content
+        mod_image_b64 = base64.b64encode(mod_image_data).decode("utf-8")
+        return jsonify({"modified_image_base64": mod_image_b64})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 # =======================================================
-# Root route
+# 🏠 ROOT ROUTE
 # =======================================================
 @app.route("/")
 def home():
-    return jsonify({"status": "Backend is running ✅"})
+    return jsonify({"status": "✅ Flask backend is running securely!"})
 
 
 # =======================================================
-# Run Server
+# 🚀 RUN SERVER
 # =======================================================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
