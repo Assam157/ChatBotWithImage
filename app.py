@@ -9,9 +9,10 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ===== API KEYS =====
-HF_API_KEY = os.getenv("HFACCESKEY")  # Hugging Face API Key
-API_KEY = os.getenv("DEEPNAME_KEY", "riXezrVqPczSVIcHnsqxlsFkiKFiiyQu")  # DeepInfra/OpenAI Key
+HF_API_KEY = os.getenv("HFACCESKEY")  # Hugging Face token
+API_KEY = os.getenv("DEEPNAME_KEY", "riXezrVqPczSVIcHnsqxlsFkiKFiiyQu")  # DeepInfra/OpenAI key
 
+# ===== MODEL ENDPOINTS =====
 HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
 HF_IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix"
 CHAT_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
@@ -25,6 +26,7 @@ def serve_static(filename):
 @app.route("/", methods=["GET"])
 def home():
     return "Backend running!", 200
+
 
 # ===== IMAGE GENERATION =====
 @app.route("/image", methods=["POST"])
@@ -42,7 +44,6 @@ def image():
         if response.status_code != 200:
             return jsonify({"error": "Image generation failed", "details": response.text}), response.status_code
 
-        # Hugging Face can return JSON with base64 or raw bytes
         try:
             image_base64 = response.json()[0]["generated_image"]
             image_bytes = base64.b64decode(image_base64)
@@ -61,7 +62,8 @@ def image():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ===== IMAGE MODIFICATION (img2img) =====
+
+# ===== IMAGE MODIFICATION (img2img with InstructPix2Pix) =====
 @app.route("/image_modify", methods=["POST"])
 def image_modify():
     """
@@ -86,12 +88,15 @@ def image_modify():
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
     try:
         with open(upload_path, "rb") as img_file:
+            # instruct-pix2pix accepts multipart form data
+            files = {"image": img_file}
+            data = {"inputs": prompt}
             response = requests.post(
                 HF_IMAGE_MODIFY_URL,
                 headers=headers,
-                files={"image": img_file},
-                data={"inputs": prompt},
-                timeout=90
+                data=data,
+                files=files,
+                timeout=120
             )
 
         if response.status_code != 200:
@@ -113,6 +118,7 @@ def image_modify():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 # ===== CHAT =====
 @app.route("/chat", methods=["POST"])
@@ -136,9 +142,9 @@ def chat():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 # ===== RUN APP =====
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host="0.0.0.0", port=port)
-
 
