@@ -6,16 +6,21 @@ from io import BytesIO
 
 app = Flask(__name__)
 
-# ✅ Allow CORS for your frontend domain
+# ✅ Allow CORS for your frontend
 CORS(app, resources={r"/*": {"origins": "https://chatbotwithimagenew.onrender.com"}})
 
-# ✅ Hugging Face Access Token (set in Render Environment Variables)
-HF_TOKEN = os.getenv("HFACCESSTOKEN")
+# ✅ DeepInfra API key (set in Render → Environment Variables)
+DEEPINFRA_KEY = os.getenv("DEEPINFRA_KEY")
 
-# ✅ Model Endpoints
-CHAT_MODEL = "HuggingFaceH4/zephyr-7b-beta"
+# ============================================================
+# MODELS
+# ============================================================
+CHAT_MODEL = "meta-llama/Llama-3-8b-instruct"
 IMG_GEN_MODEL = "stabilityai/stable-diffusion-2"
 IMG_MODIFY_MODEL = "timbrooks/instruct-pix2pix"
+
+BASE_URL_CHAT = "https://api.deepinfra.com/v1/openai/chat/completions"
+BASE_URL_IMG = "https://api.deepinfra.com/v1/inference"
 
 # ============================================================
 # CHAT ENDPOINT
@@ -29,33 +34,22 @@ def chat():
             return jsonify({"error": "No message provided"}), 400
 
         headers = {
-            "Authorization": f"Bearer {HF_TOKEN}",
-            "Accept": "application/json"
+            "Authorization": f"Bearer {DEEPINFRA_KEY}",
+            "Content-Type": "application/json"
         }
 
         payload = {
-            "inputs": message,
-            "parameters": {"max_new_tokens": 200},
+            "model": CHAT_MODEL,
+            "messages": [{"role": "user", "content": message}],
+            "max_tokens": 200
         }
 
-        response = requests.post(
-            f"https://api-inference.huggingface.co/models/{CHAT_MODEL}",
-            headers=headers,
-            json=payload
-        )
+        response = requests.post(BASE_URL_CHAT, headers=headers, json=payload)
 
         if response.status_code != 200:
-            return jsonify({"error": f"HF error: {response.text}"}), response.status_code
+            return jsonify({"error": f"DeepInfra error: {response.text}"}), response.status_code
 
-        data = response.json()
-        # Some models return a list, handle both
-        if isinstance(data, list) and len(data) > 0:
-            reply = data[0].get("generated_text", "")
-        elif isinstance(data, dict):
-            reply = data.get("generated_text", "")
-        else:
-            reply = "Sorry, I couldn't generate a response."
-
+        reply = response.json()["choices"][0]["message"]["content"]
         return jsonify({"reply": reply})
 
     except Exception as e:
@@ -73,17 +67,17 @@ def image_generate():
         if not prompt:
             return jsonify({"error": "No prompt provided"}), 400
 
-        headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+        headers = {"Authorization": f"Bearer {DEEPINFRA_KEY}"}
         payload = {"inputs": prompt}
 
         response = requests.post(
-            f"https://api-inference.huggingface.co/models/{IMG_GEN_MODEL}",
+            f"{BASE_URL_IMG}/{IMG_GEN_MODEL}",
             headers=headers,
             json=payload
         )
 
         if response.status_code != 200:
-            return jsonify({"error": f"HF error: {response.text}"}), response.status_code
+            return jsonify({"error": f"DeepInfra error: {response.text}"}), response.status_code
 
         image_bytes = response.content
         return send_file(BytesIO(image_bytes), mimetype="image/png")
@@ -104,21 +98,19 @@ def image_modify():
         if not image or not prompt:
             return jsonify({"error": "Prompt and image file required"}), 400
 
-        headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-        files = {
-            "image": (image.filename, image.stream, image.mimetype),
-        }
+        headers = {"Authorization": f"Bearer {DEEPINFRA_KEY}"}
+        files = {"image": (image.filename, image.stream, image.mimetype)}
         data = {"inputs": prompt}
 
         response = requests.post(
-            f"https://api-inference.huggingface.co/models/{IMG_MODIFY_MODEL}",
+            f"{BASE_URL_IMG}/{IMG_MODIFY_MODEL}",
             headers=headers,
             data=data,
-            files=files,
+            files=files
         )
 
         if response.status_code != 200:
-            return jsonify({"error": f"HF error: {response.text}"}), response.status_code
+            return jsonify({"error": f"DeepInfra error: {response.text}"}), response.status_code
 
         image_bytes = response.content
         return send_file(BytesIO(image_bytes), mimetype="image/png")
@@ -132,7 +124,7 @@ def image_modify():
 # ============================================================
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"message": "Flask HF Backend running successfully 🚀"})
+    return jsonify({"message": "DeepInfra Flask Backend running successfully 🚀"})
 
 
 if __name__ == "__main__":
