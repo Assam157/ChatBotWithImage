@@ -7,8 +7,7 @@ app = Flask(__name__)
 CORS(app)  # ✅ Allow frontend access
 
 HF_API_KEY = os.getenv("HFACCESKEY")  # Optional Hugging Face API Key
-
-
+HF_IMAGEGEN_URL="https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
 # =======================================================
 # 1️⃣ Chat Endpoint — Using DialoGPT (Free HF Space)
 # =======================================================
@@ -62,7 +61,7 @@ def generate_image():
         headers = {"Content-Type": "application/json"}
 
         # ✅ Free public Stable Diffusion HF space
-        hf_url = "https://huggingface.co/spaces/stabilityai/stable-diffusion-2/api/predict/"
+        hf_url = HF_IMAGEGEN_URL
 
         response = requests.post(hf_url, headers=headers, json=payload, timeout=120)
 
