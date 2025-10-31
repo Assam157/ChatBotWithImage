@@ -24,7 +24,7 @@ HF_API_KEY = os.getenv("HFACCESKEY", "")  # Your Hugging Face access token (set 
 
 # ===== MODEL ENDPOINTS =====
 HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-HF_IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix"
+HF_IMAGE_MODIFY_URL = "https://api-inference.huggingface.co/models/fal-ai/instruct-pix2pix"
 CHAT_URL = "https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta"
 
 # ===== Serve static files (for saved images) =====
