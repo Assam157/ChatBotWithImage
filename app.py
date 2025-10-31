@@ -19,7 +19,7 @@ def chat():
             return jsonify({"error": "Missing prompt"}), 400
 
         # Correct Hugging Face Space inference endpoint
-        hf_url = "https://huggingface.co/spaces/microsoft/DialoGPT-medium/api/predict/"
+          hf_url = "https://huggingface.co/spaces/abidlabs/ChatGPT-mini/api/predict/"
 
         payload = {"data": [user_input]}
         headers = {"Content-Type": "application/json"}
