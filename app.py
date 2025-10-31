@@ -1,131 +1,104 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
-import os
-from io import BytesIO
 
 app = Flask(__name__)
+CORS(app)  # ✅ Allow frontend access
 
-# ✅ Allow CORS for your frontend
-CORS(app, resources={r"/*": {"origins": "https://chatbotwithimagenew.onrender.com"}})
 
-# ✅ DeepInfra API key (set in Render → Environment Variables)
-DEEPINFRA_KEY = os.getenv("DEEPINFRA_KEY")
-
-# ============================================================
-# MODELS
-# ============================================================
-CHAT_MODEL = "meta-llama/Llama-3-8b-instruct"
-IMG_GEN_MODEL = "stabilityai/stable-diffusion-2"
-IMG_MODIFY_MODEL = "timbrooks/instruct-pix2pix"
-
-BASE_URL_CHAT = "https://api.deepinfra.com/v1/openai/chat/completions"
-BASE_URL_IMG = "https://api.deepinfra.com/v1/inference"
-
-# ============================================================
-# CHAT ENDPOINT
-# ============================================================
+# =======================================================
+# 1️⃣ Chat Endpoint — Using DialoGPT (No Token Needed)
+# =======================================================
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
         data = request.get_json()
-        message = data.get("message", "")
-        if not message:
-            return jsonify({"error": "No message provided"}), 400
+        user_input = data.get("prompt", "")
 
-        headers = {
-            "Authorization": f"Bearer {DEEPINFRA_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "model": CHAT_MODEL,
-            "messages": [{"role": "user", "content": message}],
-            "max_tokens": 200
-        }
-
-        response = requests.post(BASE_URL_CHAT, headers=headers, json=payload)
+        payload = {"data": [user_input]}
+        response = requests.post(
+            "https://huggingface.co/spaces/microsoft/DialoGPT-medium/api/predict/",
+            json=payload,
+            timeout=60
+        )
 
         if response.status_code != 200:
-            return jsonify({"error": f"DeepInfra error: {response.text}"}), response.status_code
+            return jsonify({"error": f"HuggingFace chat error: {response.text}"}), 500
 
-        reply = response.json()["choices"][0]["message"]["content"]
+        result = response.json()
+        reply = result.get("data", ["No reply"])[0]
         return jsonify({"reply": reply})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# ============================================================
-# IMAGE GENERATION ENDPOINT
-# ============================================================
-@app.route("/image_generate", methods=["POST"])
-def image_generate():
+# =======================================================
+# 2️⃣ Image Generation Endpoint — Stable Diffusion (No Token)
+# =======================================================
+@app.route("/generate_image", methods=["POST"])
+def generate_image():
     try:
         data = request.get_json()
         prompt = data.get("prompt", "")
-        if not prompt:
-            return jsonify({"error": "No prompt provided"}), 400
 
-        headers = {"Authorization": f"Bearer {DEEPINFRA_KEY}"}
-        payload = {"inputs": prompt}
-
+        payload = {"data": [prompt]}
         response = requests.post(
-            f"{BASE_URL_IMG}/{IMG_GEN_MODEL}",
-            headers=headers,
-            json=payload
+            "https://huggingface.co/spaces/stabilityai/stable-diffusion/api/predict/",
+            json=payload,
+            timeout=120
         )
 
         if response.status_code != 200:
-            return jsonify({"error": f"DeepInfra error: {response.text}"}), response.status_code
+            return jsonify({"error": f"HuggingFace image gen error: {response.text}"}), 500
 
-        image_bytes = response.content
-        return send_file(BytesIO(image_bytes), mimetype="image/png")
+        result = response.json()
+        image_url = result.get("data", [None])[0]
+        return jsonify({"image_url": image_url})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# ============================================================
-# IMAGE MODIFICATION ENDPOINT
-# ============================================================
-@app.route("/image_modify", methods=["POST"])
-def image_modify():
+# =======================================================
+# 3️⃣ Image Modification (Inpainting / Edit)
+# =======================================================
+@app.route("/modify_image", methods=["POST"])
+def modify_image():
     try:
-        prompt = request.form.get("prompt")
-        image = request.files.get("image")
+        data = request.get_json()
+        image_url = data.get("image_url", "")
+        instruction = data.get("instruction", "")
 
-        if not image or not prompt:
-            return jsonify({"error": "Prompt and image file required"}), 400
-
-        headers = {"Authorization": f"Bearer {DEEPINFRA_KEY}"}
-        files = {"image": (image.filename, image.stream, image.mimetype)}
-        data = {"inputs": prompt}
-
+        payload = {"data": [image_url, instruction]}
         response = requests.post(
-            f"{BASE_URL_IMG}/{IMG_MODIFY_MODEL}",
-            headers=headers,
-            data=data,
-            files=files
+            "https://huggingface.co/spaces/JonasKlose/StableDiffusionInpainting/api/predict/",
+            json=payload,
+            timeout=120
         )
 
         if response.status_code != 200:
-            return jsonify({"error": f"DeepInfra error: {response.text}"}), response.status_code
+            return jsonify({"error": f"HuggingFace modify error: {response.text}"}), 500
 
-        image_bytes = response.content
-        return send_file(BytesIO(image_bytes), mimetype="image/png")
+        result = response.json()
+        modified_url = result.get("data", [None])[0]
+        return jsonify({"modified_image_url": modified_url})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# ============================================================
-# ROOT ENDPOINT
-# ============================================================
-@app.route("/", methods=["GET"])
+# =======================================================
+# Root route
+# =======================================================
+@app.route("/")
 def home():
-    return jsonify({"message": "DeepInfra Flask Backend running successfully 🚀"})
+    return jsonify({"status": "Backend is running ✅"})
 
 
+# =======================================================
+# Run Server
+# =======================================================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
