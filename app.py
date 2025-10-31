@@ -15,18 +15,29 @@ def chat():
         data = request.get_json()
         user_input = data.get("prompt", "")
 
+        if not user_input:
+            return jsonify({"error": "Missing prompt"}), 400
+
+        # Correct Hugging Face Space inference endpoint
+        hf_url = "https://huggingface.co/spaces/microsoft/DialoGPT-medium/api/predict/"
+
         payload = {"data": [user_input]}
-        response = requests.post(
-            "https://huggingface.co/spaces/microsoft/DialoGPT-medium/api/predict/",
-            json=payload,
-            timeout=60
-        )
+        headers = {"Content-Type": "application/json"}
+
+        response = requests.post(hf_url, headers=headers, json=payload, timeout=60)
 
         if response.status_code != 200:
-            return jsonify({"error": f"HuggingFace chat error: {response.text}"}), 500
+            return jsonify({"error": f"HuggingFace chat error: {response.text}"}), response.status_code
 
         result = response.json()
-        reply = result.get("data", ["No reply"])[0]
+
+        # Extract reply properly
+        reply = None
+        if isinstance(result, dict) and "data" in result:
+            reply = result["data"][0]
+        else:
+            reply = "No valid response received."
+
         return jsonify({"reply": reply})
 
     except Exception as e:
