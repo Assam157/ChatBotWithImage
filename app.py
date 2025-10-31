@@ -1,95 +1,139 @@
-from flask import Flask, request, jsonify
+  \from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import requests
 import os
+from io import BytesIO
 
 app = Flask(__name__)
 
-# ✅ allow all origins and all methods (fixes your CORS preflight)
-CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})
+# ✅ Allow CORS for your frontend domain
+CORS(app, resources={r"/*": {"origins": "https://chatbotwithimagenew.onrender.com"}})
 
-HF_API_URL = "https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta"
-HF_API_TOKEN = bos.getenv("HFACESSKEY")
+# ✅ Hugging Face Access Token (set in Render Environment Variables)
+HF_TOKEN = os.getenv("HFACESSTOKEN")
 
-headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
+# ✅ Model Endpoints
+CHAT_MODEL = "HuggingFaceH4/zephyr-7b-beta"
+IMG_GEN_MODEL = "stabilityai/stable-diffusion-2"
+IMG_MODIFY_MODEL = "timbrooks/instruct-pix2pix"
 
-
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({"message": "✅ Backend live"})
-
-
-# =========================
-# 🗨️ Chat endpoint
-# =========================
-@app.route("/chat", methods=["OPTIONS", "POST"])
+# ============================================================
+# CHAT ENDPOINT
+# ============================================================
+@app.route("/chat", methods=["POST"])
 def chat():
-    # handle preflight
-    if request.method == "OPTIONS":
-        return _cors_preflight_response()
     try:
         data = request.get_json()
-        prompt = data.get("message", "")
+        message = data.get("message", "")
+        if not message:
+            return jsonify({"error": "No message provided"}), 400
 
-        payload = {
-            "inputs": prompt,
-            "parameters": {"max_new_tokens": 200}
+        headers = {
+            "Authorization": f"Bearer {HF_TOKEN}",
+            "Content-Type": "application/json"
         }
 
-        resp = requests.post(HF_API_URL, headers=headers, json=payload)
-        if resp.status_code != 200:
-            return jsonify({"error": "HF request failed", "details": resp.text}), resp.status_code
+        payload = {
+            "inputs": message,
+            "parameters": {"max_new_tokens": 200},
+        }
 
-        reply_text = resp.json()[0]["generated_text"]
-        return _corsify_actual_response(jsonify({"reply": reply_text}))
+        response = requests.post(
+            f"https://api-inference.huggingface.co/models/{CHAT_MODEL}",
+            headers=headers,
+            json=payload
+        )
+
+        if response.status_code != 200:
+            return jsonify({"error": f"HF error: {response.text}"}), response.status_code
+
+        data = response.json()
+        # Some models return a list, handle both
+        if isinstance(data, list) and len(data) > 0:
+            reply = data[0].get("generated_text", "")
+        elif isinstance(data, dict):
+            reply = data.get("generated_text", "")
+        else:
+            reply = "Sorry, I couldn't generate a response."
+
+        return jsonify({"reply": reply})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# =========================
-# 🖼️ Image Modify endpoint
-# =========================
-@app.route("/image_modify", methods=["OPTIONS", "POST"])
-def image_modify():
-    if request.method == "OPTIONS":
-        return _cors_preflight_response()
-
+# ============================================================
+# IMAGE GENERATION ENDPOINT
+# ============================================================
+@app.route("/image_generate", methods=["POST"])
+def image_generate():
     try:
-        if "image" not in request.files or "prompt" not in request.form:
-            return jsonify({"error": "Missing image or prompt"}), 400
+        data = request.get_json()
+        prompt = data.get("prompt", "")
+        if not prompt:
+            return jsonify({"error": "No prompt provided"}), 400
 
-        image_file = request.files["image"]
-        prompt = request.form["prompt"]
+        headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+        payload = {"inputs": prompt}
 
-        files = {"image": (image_file.filename, image_file.read(), image_file.content_type)}
+        response = requests.post(
+            f"https://api-inference.huggingface.co/models/{IMG_GEN_MODEL}",
+            headers=headers,
+            json=payload
+        )
+
+        if response.status_code != 200:
+            return jsonify({"error": f"HF error: {response.text}"}), response.status_code
+
+        image_bytes = response.content
+        return send_file(BytesIO(image_bytes), mimetype="image/png")
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================================
+# IMAGE MODIFICATION ENDPOINT
+# ============================================================
+@app.route("/image_modify", methods=["POST"])
+def image_modify():
+    try:
+        prompt = request.form.get("prompt")
+        image = request.files.get("image")
+
+        if not image or not prompt:
+            return jsonify({"error": "Prompt and image file required"}), 400
+
+        headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+        files = {
+            "image": (image.filename, image.stream, image.mimetype),
+        }
         data = {"inputs": prompt}
 
-        r = requests.post(
-            "https://api-inference.huggingface.co/models/fal-ai/instruct-pix2pix",
+        response = requests.post(
+            f"https://api-inference.huggingface.co/models/{IMG_MODIFY_MODEL}",
             headers=headers,
             data=data,
             files=files,
         )
 
-        return _corsify_actual_response(jsonify(r.json()))
+        if response.status_code != 200:
+            return jsonify({"error": f"HF error: {response.text}"}), response.status_code
+
+        image_bytes = response.content
+        return send_file(BytesIO(image_bytes), mimetype="image/png")
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# ---------- CORS helpers ----------
-def _cors_preflight_response():
-    response = jsonify({"status": "ok"})
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    response.headers.add("Access-Control-Allow-Headers", "*")
-    response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-    return response, 200
-
-def _corsify_actual_response(response):
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    return response
+# ============================================================
+# ROOT ENDPOINT
+# ============================================================
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"message": "Flask HF Backend running successfully 🚀"})
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)
