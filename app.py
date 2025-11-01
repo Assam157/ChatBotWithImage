@@ -144,7 +144,7 @@ def generate_image():
 @app.route("/modify_image", methods=["POST", "OPTIONS"])
 def modify_image():
     if request.method == "OPTIONS":
-        return jsonify({"status": "ok"}), 200
+        return jsonify({"ok": True}), 200
 
     try:
         data = request.get_json(force=True)
@@ -160,14 +160,20 @@ def modify_image():
         }
 
         payload = {
-            "model": "stability-ai/sdxl-inpainting",  # ✅ inpainting model
-            "image": image_url,
-            "prompt": instruction,
-            "mask": None,  # optional mask if you use it later
+            "model": "black-forest-labs/flux-pro",  # or flux-schnell if faster
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": instruction},
+                        {"type": "input_image", "image_url": image_url}
+                    ]
+                }
+            ]
         }
 
         response = requests.post(
-            "https://openrouter.ai/api/v1/images/edits",
+            "https://openrouter.ai/api/v1/chat/completions",
             headers=headers,
             json=payload,
             timeout=120
@@ -175,21 +181,28 @@ def modify_image():
 
         if response.status_code != 200:
             return jsonify({
-                "error": f"OpenRouter inpainting failed ({response.status_code})",
+                "error": f"OpenRouter inpaint failed ({response.status_code})",
                 "details": response.text
             }), response.status_code
 
         data = response.json()
         modified_image = None
 
-        # ✅ Extract modified image URL safely
-        if "data" in data and len(data["data"]) > 0:
-            modified_image = data["data"][0].get("url")
+        if "choices" in data and len(data["choices"]) > 0:
+            msg = data["choices"][0]["message"]
+            if "content" in msg and isinstance(msg["content"], list):
+                for item in msg["content"]:
+                    if item.get("type") == "image_url":
+                        modified_image = item["image_url"]["url"]
+                        break
 
         if modified_image:
             return jsonify({"modified_image": modified_image}), 200
         else:
-            return jsonify({"error": "No modified image returned", "raw": data}), 200
+            return jsonify({
+                "error": "No image returned by model",
+                "raw": data
+            }), 502
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
