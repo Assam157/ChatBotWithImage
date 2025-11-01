@@ -3,22 +3,16 @@ from flask_cors import CORS
 import os, requests
 
 app = Flask(__name__)
-
-# === 🌍 Allow all CORS (with OPTIONS pass) ===
-CORS(
-    app,
-    resources={r"/*": {"origins": "*"}},
-    allow_headers=["Content-Type", "Authorization"],
-    expose_headers=["Content-Type", "Authorization"],
-    supports_credentials=True
-)
+CORS(app)
 
 OPENROUTER_KEY = os.getenv("OPENAIKEY")
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
+IMG_GEN_URL = "https://openrouter.ai/api/v1/images/generations"
+IMG_EDIT_URL = "https://openrouter.ai/api/v1/images/edits"
 
 
 # ============================================================
-# 🧠 CHAT — via OpenRouter
+# 🧠 CHAT ENDPOINT
 # ============================================================
 @app.route("/chat", methods=["POST", "OPTIONS"])
 def chat():
@@ -27,8 +21,8 @@ def chat():
 
     try:
         data = request.get_json(force=True)
-        user_input = data.get("message", "").strip()
-        if not user_input:
+        message = data.get("message", "").strip()
+        if not message:
             return jsonify({"error": "Missing message"}), 400
 
         headers = {
@@ -39,34 +33,17 @@ def chat():
         payload = {
             "model": "mistralai/mistral-7b-instruct",
             "messages": [
-                {"role": "system", "content": "You are a helpful AI assistant."},
-                {"role": "user", "content": user_input}
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": message}
             ]
         }
 
-        response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
+        response = requests.post(CHAT_URL, headers=headers, json=payload, timeout=60)
         if response.status_code != 200:
-            return jsonify({
-                "error": f"OpenRouter request failed ({response.status_code})",
-                "details": response.text
-            }), 502
+            return jsonify({"error": f"Chat request failed ({response.status_code})", "details": response.text}), 502
 
         data = response.json()
-        reply = ""
-
-        try:
-            if "choices" in data and len(data["choices"]) > 0:
-                message_content = data["choices"][0]["message"].get("content", "")
-                if isinstance(message_content, list):
-                    reply = "".join([c.get("text", "") for c in message_content if isinstance(c, dict)])
-                else:
-                    reply = message_content
-        except Exception:
-            reply = "Error extracting reply."
-
-        if not reply:
-            reply = "⚠️ No valid response from AI."
-
+        reply = data.get("choices", [{}])[0].get("message", {}).get("content", "⚠️ No valid response.")
         return jsonify({"reply": reply}), 200
 
     except Exception as e:
@@ -74,7 +51,7 @@ def chat():
 
 
 # ============================================================
-# 🖼️ IMAGE GENERATION — via OpenRouter
+# 🖼️ IMAGE GENERATION ENDPOINT
 # ============================================================
 @app.route("/generate_image", methods=["POST", "OPTIONS"])
 def generate_image():
@@ -93,19 +70,13 @@ def generate_image():
         }
 
         payload = {
-            "model": "stabilityai/stable-diffusion-3",
-            "messages": [
-                {"role": "user", "content": f"Generate an image of: {prompt}"}
-            ]
+            "model": "stability-ai/sdxl",
+            "prompt": prompt,
+            "size": "1024x1024",
+            "n": 1
         }
 
-        response = requests.post(
-            OPENROUTER_URL,
-            headers=headers,
-            json=payload,
-            timeout=120
-        )
-
+        response = requests.post(IMG_GEN_URL, headers=headers, json=payload, timeout=120)
         if response.status_code != 200:
             return jsonify({
                 "error": f"OpenRouter image generation failed ({response.status_code})",
@@ -114,30 +85,20 @@ def generate_image():
 
         data = response.json()
         image_url = None
-
-        # ✅ Extract image URL from multimodal response
-        if "choices" in data and len(data["choices"]) > 0:
-            msg = data["choices"][0]["message"]
-            if "content" in msg and isinstance(msg["content"], list):
-                for item in msg["content"]:
-                    if item.get("type") == "image_url":
-                        image_url = item["image_url"]["url"]
-                        break
+        if "data" in data and len(data["data"]) > 0:
+            image_url = data["data"][0].get("url")
 
         if image_url:
             return jsonify({"image_url": image_url}), 200
         else:
-            return jsonify({
-                "error": "No image returned by model",
-                "raw": data
-            }), 502
+            return jsonify({"error": "No image returned by model", "raw": data}), 502
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 # ============================================================
-# 🧩 IMAGE MODIFICATION — via OpenRouter (Refiner)
+# 🧩 IMAGE MODIFICATION ENDPOINT
 # ============================================================
 @app.route("/modify_image", methods=["POST", "OPTIONS"])
 def modify_image():
@@ -158,58 +119,39 @@ def modify_image():
         }
 
         payload = {
-            "model": "stabilityai/stable-diffusion-xl-refiner-1.0",
-            "messages": [
-                {"role": "user", "content": f"Modify the image {image_url} as follows: {instruction}"}
-            ]
+            "model": "stability-ai/sdxl-inpainting",
+            "image": image_url,
+            "prompt": instruction,
         }
 
-        response = requests.post(
-            OPENROUTER_URL,
-            headers=headers,
-            json=payload,
-            timeout=120
-        )
-
+        response = requests.post(IMG_EDIT_URL, headers=headers, json=payload, timeout=120)
         if response.status_code != 200:
             return jsonify({
-                "error": f"OpenRouter inpaint failed ({response.status_code})",
+                "error": f"OpenRouter inpainting failed ({response.status_code})",
                 "details": response.text
             }), response.status_code
 
         data = response.json()
         modified_image = None
-
-        if "choices" in data and len(data["choices"]) > 0:
-            msg = data["choices"][0]["message"]
-            if "content" in msg and isinstance(msg["content"], list):
-                for item in msg["content"]:
-                    if item.get("type") == "image_url":
-                        modified_image = item["image_url"]["url"]
-                        break
+        if "data" in data and len(data["data"]) > 0:
+            modified_image = data["data"][0].get("url")
 
         if modified_image:
             return jsonify({"modified_image": modified_image}), 200
         else:
-            return jsonify({
-                "error": "No image returned by model",
-                "raw": data
-            }), 502
+            return jsonify({"error": "No modified image returned", "raw": data}), 502
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 # ============================================================
-# 🌐 Root Endpoint
+# 🌐 ROOT
 # ============================================================
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"status": "Unified OpenRouter AI backend running ✅"}), 200
+    return jsonify({"status": "✅ OpenRouter AI Backend Running"}), 200
 
 
-# ============================================================
-# 🚀 Run App
-# ============================================================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
