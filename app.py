@@ -3,7 +3,13 @@ from flask_cors import CORS
 import os, requests
 
 app = Flask(__name__)
-CORS(app)
+CORS(
+    app,
+    resources={r"/*": {"origins": "*"}},
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization"],
+    expose_headers=["Content-Type", "Authorization"],
+)
 
 OPENROUTER_KEY = os.getenv("OPENAIKEY")
 CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
