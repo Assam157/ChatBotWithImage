@@ -6,7 +6,7 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # === Environment Key ===
-OPENROUTER_KEY = os.getenv("OPENROUTER_KEY")
+OPENROUTER_KEY = os.getenv("OPENAIKEY")
 
 # === API URL ===
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
