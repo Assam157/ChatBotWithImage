@@ -1,143 +1,147 @@
-# ============================================================
-# 🧠 Hugging Face Inference Backend (Router API, 2025 update)
-# ============================================================
-from flask import Flask, request, jsonify
+import os
+import uuid
+import base64
+import requests
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import os, requests
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-# --- Allow all origins + preflight ---
-CORS(
-    app,
-    resources={r"/*": {"origins": "*"}},
-    allow_headers=["Content-Type", "Authorization"],
-    expose_headers=["Content-Type", "Authorization"],
-    supports_credentials=True
-)
+# ===== API KEYS =====
+HF_API_KEY = os.getenv("HFACCESKEY")  # Hugging Face API Key
 
-HF_KEY = os.getenv("HF_KEY")  # <-- set in your environment
-if not HF_KEY:
-    print("⚠️  Warning: HF_KEY not found in environment.")
+# ===== Updated Hugging Face Endpoints =====
+HF_IMAGE_URL = "https://router.huggingface.co/hf-inference/stabilityai/stable-diffusion-xl-base-1.0"
+HF_IMAGE_MODIFY_URL = "https://router.huggingface.co/hf-inference/stabilityai/stable-diffusion-xl-refiner-1.0"
+HF_CHAT_URL = "https://router.huggingface.co/hf-inference/mistralai/Mixtral-8x7B-Instruct-v0.1"
 
-BASE_URL = "https://router.huggingface.co/hf-inference"
+# ===== Serve static folder for saved images =====
+@app.route("/static/<path:filename>")
+def serve_static(filename):
+    return send_from_directory("static", filename)
 
-# ============================================================
-# 🎨 TEXT → IMAGE GENERATION
-# ============================================================
-@app.route("/generate_image", methods=["POST", "OPTIONS"])
-def generate_image():
-    if request.method == "OPTIONS":
-        return jsonify({"ok": True}), 200
-
-    try:
-        data = request.get_json(force=True)
-        prompt = data.get("message", "").strip()
-        if not prompt:
-            return jsonify({"error": "Missing prompt"}), 400
-
-        headers = {
-            "Authorization": f"Bearer {HF_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        # You can change model below to another free provider model
-        payload = {
-            "inputs": prompt,
-            "parameters": {"width": 512, "height": 512},
-            "model": "black-forest-labs/FLUX.1-dev"
-        }
-
-        response = requests.post(
-            f"{BASE_URL}/models/black-forest-labs/FLUX.1-dev",
-            headers=headers,
-            json=payload,
-            timeout=120
-        )
-
-        if response.status_code != 200:
-            return jsonify({
-                "error": f"HF image generation failed ({response.status_code})",
-                "details": response.text
-            }), response.status_code
-
-        data = response.json()
-
-        # HF returns base64 or URLs depending on the provider
-        if isinstance(data, dict) and "images" in data:
-            image_data = data["images"][0]
-            return jsonify({"image_base64": image_data}), 200
-
-        return jsonify({"error": "No image returned", "raw": data}), 502
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-# ============================================================
-# 🧩 IMAGE MODIFICATION / INPAINTING
-# ============================================================
-@app.route("/modify_image", methods=["POST", "OPTIONS"])
-def modify_image():
-    if request.method == "OPTIONS":
-        return jsonify({"ok": True}), 200
-
-    try:
-        data = request.get_json(force=True)
-        image_url = data.get("image_url", "").strip()
-        instruction = data.get("instruction", "").strip()
-
-        if not image_url or not instruction:
-            return jsonify({"error": "Missing fields (image_url/instruction)"}), 400
-
-        headers = {
-            "Authorization": f"Bearer {HF_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "inputs": {
-                "image": image_url,
-                "prompt": instruction
-            },
-            "model": "timbrooks/instruct-pix2pix"
-        }
-
-        response = requests.post(
-            f"{BASE_URL}/models/timbrooks/instruct-pix2pix",
-            headers=headers,
-            json=payload,
-            timeout=120
-        )
-
-        if response.status_code != 200:
-            return jsonify({
-                "error": f"HF image modification failed ({response.status_code})",
-                "details": response.text
-            }), response.status_code
-
-        data = response.json()
-
-        if isinstance(data, dict) and "images" in data:
-            image_data = data["images"][0]
-            return jsonify({"modified_image": image_data}), 200
-
-        return jsonify({"error": "No modified image returned", "raw": data}), 502
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-# ============================================================
-# 🌐 Root Endpoint
-# ============================================================
+# ===== ROOT =====
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"status": "✅ Hugging Face Inference backend running"}), 200
+    return "Backend running with Hugging Face Router API!", 200
 
 
-# ============================================================
-# 🚀 Run Server
-# ============================================================
+# ===== IMAGE GENERATION =====
+@app.route("/image", methods=["POST"])
+def image():
+    data = request.json
+    prompt = data.get("message", "").strip() if data else ""
+    if not prompt:
+        return jsonify({"error": "No Prompt Provided"}), 400
+
+    headers = {"Authorization": f"Bearer {HF_API_KEY}", "Content-Type": "application/json"}
+    payload = {"inputs": prompt}
+
+    try:
+        response = requests.post(HF_IMAGE_URL, json=payload, headers=headers, timeout=60)
+        if response.status_code != 200:
+            return jsonify({"error": "Image generation failed", "details": response.text}), response.status_code
+
+        try:
+            image_base64 = response.json()[0]["generated_image"]
+            image_bytes = base64.b64decode(image_base64)
+        except Exception:
+            image_bytes = response.content
+
+        os.makedirs("static", exist_ok=True)
+        filename = f"{uuid.uuid4()}.png"
+        path = os.path.join("static", filename)
+        with open(path, "wb") as f:
+            f.write(image_bytes)
+
+        image_url = f"https://chatbotwithimagebackend.onrender.com/static/{filename}"
+        return jsonify({"image_url": image_url}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ===== IMAGE MODIFICATION =====
+@app.route("/image_modify", methods=["POST"])
+def image_modify():
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+    prompt = request.form.get("prompt", "").strip()
+    if not prompt:
+        return jsonify({"error": "No prompt provided"}), 400
+
+    os.makedirs("uploads", exist_ok=True)
+    os.makedirs("static", exist_ok=True)
+
+    upload_path = os.path.join("uploads", f"{uuid.uuid4()}_{file.filename}")
+    file.save(upload_path)
+
+    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+
+    try:
+        with open(upload_path, "rb") as img_file:
+            response = requests.post(
+                HF_IMAGE_MODIFY_URL,
+                headers=headers,
+                files={"image": img_file},
+                data={"inputs": prompt},
+                timeout=90
+            )
+
+        if response.status_code != 200:
+            return jsonify({"error": "Image modification failed", "details": response.text}), response.status_code
+
+        try:
+            image_base64 = response.json()[0]["generated_image"]
+            image_bytes = base64.b64decode(image_base64)
+        except Exception:
+            image_bytes = response.content
+
+        filename = f"modified_{uuid.uuid4()}.png"
+        path = os.path.join("static", filename)
+        with open(path, "wb") as f:
+            f.write(image_bytes)
+
+        image_url = f"https://chatbotwithimagebackend.onrender.com/static/{filename}"
+        return jsonify({"modified_image_url": image_url}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ===== CHAT (now Hugging Face Router) =====
+@app.route("/chat", methods=["POST"])
+def chat():
+    data = request.json
+    prompt = data.get("message", "").strip() if data else ""
+    if not prompt:
+        return jsonify({"error": "No Prompt Provided"}), 400
+
+    headers = {
+        "Authorization": f"Bearer {HF_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "inputs": prompt
+    }
+
+    try:
+        response = requests.post(HF_CHAT_URL, json=payload, headers=headers, timeout=45)
+        if response.status_code != 200:
+            return jsonify({"error": "Chat failed", "details": response.text}), response.status_code
+
+        result = response.json()
+        reply = result.get("generated_text") or result[0].get("generated_text", "No response received.")
+        return jsonify({"reply": reply.strip()}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ===== RUN APP =====
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, host="0.0.0.0", port=port)
