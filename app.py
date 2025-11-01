@@ -6,41 +6,48 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# ✅ Use the correct environment variable name (set this in Render)
-HF_API_KEY = os.getenv("HFACCESKEY")
+# ✅ Environment variables
+OPENROUTER_KEY = os.getenv("OPENAiKey")
+FALAI_KEY = os.getenv("FalAIKey")
 
-# ✅ Real Hugging Face model endpoints
-HF_CHAT_URL = "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium"
-HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
-HF_MODIFY_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-inpainting"
+# ✅ API URLs
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+FALAI_GEN_URL = "https://fal.run/fal-ai/flux-pro"
+FALAI_MOD_URL = "https://fal.run/fal-ai/flux-pro-inpainting"
 
 # =======================================================
-# 1️⃣ Chat Endpoint
+# 1️⃣ CHAT — OpenRouter
 # =======================================================
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
         data = request.get_json()
-        user_input = data.get("message", "")
-        if not user_input:
+        message = data.get("message", "")
+        if not message:
             return jsonify({"error": "Missing message"}), 400
 
         headers = {
-            "Authorization": f"Bearer {HF_API_KEY}",
+            "Authorization": f"Bearer {OPENROUTER_KEY}",
             "Content-Type": "application/json"
         }
 
-        payload = {"inputs": user_input}
-        response = requests.post(HF_CHAT_URL, headers=headers, json=payload, timeout=60)
+        payload = {
+            "model": "mistralai/mistral-7b-instruct",
+            "messages": [
+                {"role": "system", "content": "You are a helpful AI assistant."},
+                {"role": "user", "content": message}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 200
+        }
 
-        if response.status_code != 200:
-            return jsonify({"error": f"HF Chat error: {response.text}"}), response.status_code
-
+        response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
         result = response.json()
-        if isinstance(result, list) and len(result) > 0 and "generated_text" in result[0]:
-            reply = result[0]["generated_text"]
+
+        if "choices" in result and len(result["choices"]) > 0:
+            reply = result["choices"][0]["message"]["content"]
         else:
-            reply = "No valid response received."
+            reply = result.get("error", "No response received")
 
         return jsonify({"reply": reply})
 
@@ -49,7 +56,7 @@ def chat():
 
 
 # =======================================================
-# 2️⃣ Image Generation Endpoint
+# 2️⃣ IMAGE GENERATION — Fal.ai
 # =======================================================
 @app.route("/generate_image", methods=["POST"])
 def generate_image():
@@ -60,27 +67,26 @@ def generate_image():
             return jsonify({"error": "Missing message"}), 400
 
         headers = {
-            "Authorization": f"Bearer {HF_API_KEY}",
+            "Authorization": f"Key {FALAI_KEY}",
             "Content-Type": "application/json"
         }
 
-        payload = {"inputs": prompt}
-        response = requests.post(HF_IMAGE_URL, headers=headers, json=payload, timeout=120)
-
-        if response.status_code != 200:
-            return jsonify({"error": f"HF Image error: {response.text}"}), response.status_code
-
+        payload = {"prompt": prompt}
+        response = requests.post(FALAI_GEN_URL, headers=headers, json=payload, timeout=120)
         result = response.json()
-        # Some models return base64 image bytes in 'data' or 'generated_image'
-        image_data = result if isinstance(result, list) else result.get("data", [None])[0]
-        return jsonify({"image": image_data})
+
+        if "images" in result and len(result["images"]) > 0:
+            image_url = result["images"][0]["url"]
+            return jsonify({"image_url": image_url})
+        else:
+            return jsonify({"error": result}), 400
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 # =======================================================
-# 3️⃣ Image Modification (Inpainting)
+# 3️⃣ IMAGE MODIFICATION — Fal.ai Inpainting
 # =======================================================
 @app.route("/modify_image", methods=["POST"])
 def modify_image():
@@ -92,30 +98,34 @@ def modify_image():
             return jsonify({"error": "Missing fields"}), 400
 
         headers = {
-            "Authorization": f"Bearer {HF_API_KEY}",
+            "Authorization": f"Key {FALAI_KEY}",
             "Content-Type": "application/json"
         }
 
-        payload = {"inputs": {"image": image_url, "prompt": instruction}}
-        response = requests.post(HF_MODIFY_URL, headers=headers, json=payload, timeout=120)
+        payload = {
+            "image_url": image_url,
+            "prompt": instruction
+        }
 
-        if response.status_code != 200:
-            return jsonify({"error": f"HF Modify error: {response.text}"}), response.status_code
-
+        response = requests.post(FALAI_MOD_URL, headers=headers, json=payload, timeout=120)
         result = response.json()
-        modified_image = result if isinstance(result, list) else result.get("data", [None])[0]
-        return jsonify({"modified_image": modified_image})
+
+        if "images" in result and len(result["images"]) > 0:
+            modified_image_url = result["images"][0]["url"]
+            return jsonify({"modified_image_url": modified_image_url})
+        else:
+            return jsonify({"error": result}), 400
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 # =======================================================
-# 4️⃣ Health Check
+# 4️⃣ HEALTH CHECK
 # =======================================================
 @app.route("/")
 def home():
-    return jsonify({"status": "Backend running ✅"})
+    return jsonify({"status": "Backend running with Fal.ai + OpenRouter ✅"})
 
 
 # =======================================================
