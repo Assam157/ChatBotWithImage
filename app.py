@@ -3,7 +3,9 @@ from flask_cors import CORS
 import os, requests
 
 app = Flask(__name__)
-CORS(app)
+
+# === 🌍 Enable full open CORS access ===
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # === Environment Keys ===
 OPENROUTER_KEY = os.getenv("OPENAIKEY")
