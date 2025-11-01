@@ -158,44 +158,36 @@ def modify_image():
         }
 
         payload = {
-            "model": "black-forest-labs/flux-pro",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": instruction},
-                        {"type": "input_image", "image_url": image_url}
-                    ]
-                }
-            ]
+            "model": "stability-ai/sdxl-inpainting",  # ✅ inpainting model
+            "image": image_url,
+            "prompt": instruction,
+            "mask": None,  # optional mask if you use it later
         }
 
-        response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=120)
+        response = requests.post(
+            "https://openrouter.ai/api/v1/images/edits",
+            headers=headers,
+            json=payload,
+            timeout=120
+        )
 
         if response.status_code != 200:
             return jsonify({
-                "error": f"OpenRouter inpaint failed ({response.status_code})",
+                "error": f"OpenRouter inpainting failed ({response.status_code})",
                 "details": response.text
-            }), 502
+            }), response.status_code
 
         data = response.json()
         modified_image = None
 
-        try:
-            choices = data.get("choices", [])
-            if choices:
-                content = choices[0]["message"].get("content", [])
-                for item in content:
-                    if item.get("type") == "image_url":
-                        modified_image = item["image_url"]["url"]
-                        break
-        except Exception:
-            pass
+        # ✅ Extract modified image URL safely
+        if "data" in data and len(data["data"]) > 0:
+            modified_image = data["data"][0].get("url")
 
         if modified_image:
             return jsonify({"modified_image": modified_image}), 200
         else:
-            return jsonify({"error": "No image returned by model", "raw": data}), 502
+            return jsonify({"error": "No modified image returned", "raw": data}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
