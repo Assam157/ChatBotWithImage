@@ -25,6 +25,11 @@ def serve_static(filename):
 @app.route("/", methods=["GET"])
 def home():
     return "✅ Backend running with Hugging Face Router API", 200
+    print("\n=== Registered Flask Routes ===")
+    for rule in app.url_map.iter_rules():
+        print(rule)
+        print("===============================\n")
+
 
 
 # ===== IMAGE GENERATION =====
