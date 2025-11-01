@@ -1,29 +1,31 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import requests
-import os
+import os, requests
 
 app = Flask(__name__)
 CORS(app)
 
-# ✅ Environment variables
-OPENROUTER_KEY = os.getenv("OPENAiKey")
-FALAI_KEY = os.getenv("FalAIKey")
+# === Environment Keys ===
+OPENROUTER_KEY = os.getenv("OPENAIKEY")
+FALAI_KEY = os.getenv("FALAIKEY")
+HF_KEY = os.getenv("HFACCESKEY")
 
-# ✅ API URLs
+# === API URLs ===
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-FALAI_GEN_URL = "https://fal.run/fal-ai/flux-pro"
-FALAI_MOD_URL = "https://fal.run/fal-ai/flux-pro-inpainting"
+FAL_IMAGE_URL = "https://fal.run/fal-ai/flux-pro"
+FAL_INPAINT_URL = "https://fal.run/fal-ai/flux-inpaint"
+HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
+HF_INPAINT_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-inpainting"
 
-# =======================================================
-# 1️⃣ CHAT — OpenRouter
-# =======================================================
+# ============================================================
+# 🧠 CHAT (OpenRouter)
+# ============================================================
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
         data = request.get_json()
-        message = data.get("message", "")
-        if not message:
+        user_input = data.get("message", "")
+        if not user_input:
             return jsonify({"error": "Missing message"}), 400
 
         headers = {
@@ -34,20 +36,18 @@ def chat():
         payload = {
             "model": "mistralai/mistral-7b-instruct",
             "messages": [
-                {"role": "system", "content": "You are a helpful AI assistant."},
-                {"role": "user", "content": message}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 200
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": user_input}
+            ]
         }
 
         response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
-        result = response.json()
+        data = response.json()
 
-        if "choices" in result and len(result["choices"]) > 0:
-            reply = result["choices"][0]["message"]["content"]
+        if "choices" in data and len(data["choices"]) > 0:
+            reply = data["choices"][0]["message"]["content"]
         else:
-            reply = result.get("error", "No response received")
+            reply = "No valid response."
 
         return jsonify({"reply": reply})
 
@@ -55,39 +55,39 @@ def chat():
         return jsonify({"error": str(e)}), 500
 
 
-# =======================================================
-# 2️⃣ IMAGE GENERATION — Fal.ai
-# =======================================================
+# ============================================================
+# 🖼️ IMAGE GENERATION (Fal.AI → fallback HuggingFace)
+# ============================================================
 @app.route("/generate_image", methods=["POST"])
 def generate_image():
     try:
-        data = request.get_json()
-        prompt = data.get("message", "")
+        prompt = request.json.get("message", "")
         if not prompt:
-            return jsonify({"error": "Missing message"}), 400
+            return jsonify({"error": "Missing prompt"}), 400
 
-        headers = {
-            "Authorization": f"Key {FALAI_KEY}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Key {FALAI_KEY}", "Content-Type": "application/json"}
+        payload = {"prompt": prompt, "num_images": 1}
 
-        payload = {"prompt": prompt}
-        response = requests.post(FALAI_GEN_URL, headers=headers, json=payload, timeout=120)
-        result = response.json()
-
-        if "images" in result and len(result["images"]) > 0:
-            image_url = result["images"][0]["url"]
-            return jsonify({"image_url": image_url})
+        # Try Fal.AI first
+        fal_response = requests.post(FAL_IMAGE_URL, headers=headers, json=payload, timeout=90)
+        if fal_response.status_code == 200:
+            result = fal_response.json()
+            if "images" in result:
+                return jsonify({"image": result["images"][0]["url"]})
         else:
-            return jsonify({"error": result}), 400
+            # Fallback to HuggingFace
+            hf_headers = {"Authorization": f"Bearer {HF_KEY}"}
+            hf_payload = {"inputs": prompt}
+            hf_response = requests.post(HF_IMAGE_URL, headers=hf_headers, json=hf_payload)
+            return jsonify({"image": hf_response.json()})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# =======================================================
-# 3️⃣ IMAGE MODIFICATION — Fal.ai Inpainting
-# =======================================================
+# ============================================================
+# 🧩 IMAGE MODIFICATION / INPAINTING
+# ============================================================
 @app.route("/modify_image", methods=["POST"])
 def modify_image():
     try:
@@ -97,39 +97,30 @@ def modify_image():
         if not image_url or not instruction:
             return jsonify({"error": "Missing fields"}), 400
 
-        headers = {
-            "Authorization": f"Key {FALAI_KEY}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Key {FALAI_KEY}", "Content-Type": "application/json"}
+        payload = {"image_url": image_url, "prompt": instruction}
 
-        payload = {
-            "image_url": image_url,
-            "prompt": instruction
-        }
+        fal_response = requests.post(FAL_INPAINT_URL, headers=headers, json=payload, timeout=90)
 
-        response = requests.post(FALAI_MOD_URL, headers=headers, json=payload, timeout=120)
-        result = response.json()
-
-        if "images" in result and len(result["images"]) > 0:
-            modified_image_url = result["images"][0]["url"]
-            return jsonify({"modified_image_url": modified_image_url})
+        if fal_response.status_code == 200:
+            result = fal_response.json()
+            if "images" in result:
+                return jsonify({"modified_image": result["images"][0]["url"]})
         else:
-            return jsonify({"error": result}), 400
+            # Fallback to HuggingFace
+            hf_headers = {"Authorization": f"Bearer {HF_KEY}"}
+            hf_payload = {"inputs": {"image": image_url, "prompt": instruction}}
+            hf_response = requests.post(HF_INPAINT_URL, headers=hf_headers, json=hf_payload)
+            return jsonify({"modified_image": hf_response.json()})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# =======================================================
-# 4️⃣ HEALTH CHECK
-# =======================================================
 @app.route("/")
 def home():
-    return jsonify({"status": "Backend running with Fal.ai + OpenRouter ✅"})
+    return jsonify({"status": "Unified AI backend running ✅"})
 
 
-# =======================================================
-# Run Server
-# =======================================================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
