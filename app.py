@@ -13,7 +13,7 @@ CORS(
     supports_credentials=True
 )
 
-OPENROUTER_KEY = os.getenv("OPENROUTER_KEY", "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")
+OPENROUTER_KEY = os.getenv("OPENAIKEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # ============================================================
