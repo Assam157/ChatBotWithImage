@@ -4,9 +4,7 @@ import os, requests
 
 app = Flask(__name__)
 
-# ============================================================
-# 🌍 CORS CONFIGURATION
-# ============================================================
+# === 🌍 Allow all CORS (with OPTIONS pass) ===
 CORS(
     app,
     resources={r"/*": {"origins": "*"}},
@@ -46,13 +44,7 @@ def chat():
             ]
         }
 
-        response = requests.post(
-            OPENROUTER_URL,
-            headers=headers,
-            json=payload,
-            timeout=60
-        )
-
+        response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
         if response.status_code != 200:
             return jsonify({
                 "error": f"OpenRouter request failed ({response.status_code})",
@@ -60,15 +52,13 @@ def chat():
             }), 502
 
         data = response.json()
-        reply = None
+        reply = ""
 
         try:
             if "choices" in data and len(data["choices"]) > 0:
                 message_content = data["choices"][0]["message"].get("content", "")
                 if isinstance(message_content, list):
-                    reply = "".join(
-                        [c.get("text", "") for c in message_content if isinstance(c, dict)]
-                    )
+                    reply = "".join([c.get("text", "") for c in message_content if isinstance(c, dict)])
                 else:
                     reply = message_content
         except Exception:
@@ -103,15 +93,14 @@ def generate_image():
         }
 
         payload = {
-            "model": "stability-ai/sdxl",  # or flux-pro / kandinsky / etc.
+            "model": "stabilityai/stable-diffusion-3",
             "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "modalities": ["image"]  # ✅ tells OpenRouter we want an image
+                {"role": "user", "content": f"Generate an image of: {prompt}"}
+            ]
         }
 
         response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
+            OPENROUTER_URL,
             headers=headers,
             json=payload,
             timeout=120
@@ -126,7 +115,7 @@ def generate_image():
         data = response.json()
         image_url = None
 
-        # ✅ Extract image URL
+        # ✅ Extract image URL from multimodal response
         if "choices" in data and len(data["choices"]) > 0:
             msg = data["choices"][0]["message"]
             if "content" in msg and isinstance(msg["content"], list):
@@ -148,7 +137,7 @@ def generate_image():
 
 
 # ============================================================
-# 🧩 IMAGE MODIFICATION — via OpenRouter (Flux Pro)
+# 🧩 IMAGE MODIFICATION — via OpenRouter (Refiner)
 # ============================================================
 @app.route("/modify_image", methods=["POST", "OPTIONS"])
 def modify_image():
@@ -169,20 +158,14 @@ def modify_image():
         }
 
         payload = {
-            "model": "black-forest-labs/flux-pro",  # or flux-schnell for faster edits
+            "model": "stabilityai/stable-diffusion-xl-refiner-1.0",
             "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": instruction},
-                        {"type": "input_image", "image_url": image_url}
-                    ]
-                }
+                {"role": "user", "content": f"Modify the image {image_url} as follows: {instruction}"}
             ]
         }
 
         response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
+            OPENROUTER_URL,
             headers=headers,
             json=payload,
             timeout=120
@@ -197,7 +180,6 @@ def modify_image():
         data = response.json()
         modified_image = None
 
-        # ✅ Extract modified image URL
         if "choices" in data and len(data["choices"]) > 0:
             msg = data["choices"][0]["message"]
             if "content" in msg and isinstance(msg["content"], list):
@@ -219,7 +201,7 @@ def modify_image():
 
 
 # ============================================================
-# 🌐 ROOT ENDPOINT
+# 🌐 Root Endpoint
 # ============================================================
 @app.route("/", methods=["GET"])
 def home():
@@ -227,7 +209,7 @@ def home():
 
 
 # ============================================================
-# 🚀 RUN APP
+# 🚀 Run App
 # ============================================================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
