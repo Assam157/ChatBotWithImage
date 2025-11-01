@@ -77,10 +77,9 @@ def chat():
 # ============================================================
 # 🖼️ IMAGE GENERATION — via OpenRouter
 # ============================================================
-@app.route("/generate_image", methods=["POST", "OPTIONS"])
+ @app.route("/generate_image", methods=["POST", "OPTIONS"])
 def generate_image():
     if request.method == "OPTIONS":
-        # Preflight CORS response
         return jsonify({"ok": True}), 200
 
     try:
@@ -95,15 +94,15 @@ def generate_image():
         }
 
         payload = {
-            "model": "stability-ai/sdxl",
-            "prompt": prompt,
-            "size": "1024x1024",
-            "n": 1
+            "model": "stability-ai/sdxl",  # or flux-pro / kandinsky / etc.
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "modalities": ["image"]  # ✅ this tells OpenRouter we want an image
         }
 
-        # Use OpenRouter's /images/generations endpoint
         response = requests.post(
-            "https://openrouter.ai/api/v1/images/generations",
+            "https://openrouter.ai/api/v1/chat/completions",
             headers=headers,
             json=payload,
             timeout=120
@@ -116,13 +115,16 @@ def generate_image():
             }), response.status_code
 
         data = response.json()
-
-        # ✅ Try to extract image URL or base64 data
         image_url = None
-        if isinstance(data, dict):
-            # Sometimes returned as {"data": [{"url": "..."}, ...]}
-            if "data" in data and len(data["data"]) > 0:
-                image_url = data["data"][0].get("url")
+
+        # ✅ Extract image URL from multimodal response
+        if "choices" in data and len(data["choices"]) > 0:
+            msg = data["choices"][0]["message"]
+            if "content" in msg and isinstance(msg["content"], list):
+                for item in msg["content"]:
+                    if item.get("type") == "image_url":
+                        image_url = item["image_url"]["url"]
+                        break
 
         if image_url:
             return jsonify({"image_url": image_url}), 200
@@ -130,7 +132,7 @@ def generate_image():
             return jsonify({
                 "error": "No image returned by model",
                 "raw": data
-            }), 200
+            }), 502
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
