@@ -80,7 +80,8 @@ def chat():
 @app.route("/generate_image", methods=["POST", "OPTIONS"])
 def generate_image():
     if request.method == "OPTIONS":
-        return jsonify({"status": "ok"}), 200
+        # Preflight CORS response
+        return jsonify({"ok": True}), 200
 
     try:
         data = request.get_json(force=True)
@@ -94,35 +95,42 @@ def generate_image():
         }
 
         payload = {
-            "model": "google/gemini-2.5-flash-image-preview",
-            "messages": [{"role": "user", "content": prompt}],
-            "modalities": ["image", "text"]
+            "model": "stability-ai/sdxl",
+            "prompt": prompt,
+            "size": "1024x1024",
+            "n": 1
         }
 
-        response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=90)
+        # Use OpenRouter's /images/generations endpoint
+        response = requests.post(
+            "https://openrouter.ai/api/v1/images/generations",
+            headers=headers,
+            json=payload,
+            timeout=120
+        )
+
         if response.status_code != 200:
             return jsonify({
                 "error": f"OpenRouter image generation failed ({response.status_code})",
                 "details": response.text
-            }), 502
+            }), response.status_code
 
         data = response.json()
-        image_url = None
 
-        try:
-            if "choices" in data and len(data["choices"]) > 0:
-                content = data["choices"][0]["message"].get("content", [])
-                for item in content:
-                    if item.get("type") == "image_url":
-                        image_url = item["image_url"]["url"]
-                        break
-        except Exception:
-            pass
+        # ✅ Try to extract image URL or base64 data
+        image_url = None
+        if isinstance(data, dict):
+            # Sometimes returned as {"data": [{"url": "..."}, ...]}
+            if "data" in data and len(data["data"]) > 0:
+                image_url = data["data"][0].get("url")
 
         if image_url:
-            return jsonify({"image": image_url}), 200
+            return jsonify({"image_url": image_url}), 200
         else:
-            return jsonify({"error": "No image returned by model", "raw": data}), 502
+            return jsonify({
+                "error": "No image returned by model",
+                "raw": data
+            }), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
