@@ -9,22 +9,22 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ===== API KEYS =====
-HF_API_KEY = os.getenv("HFACCESKEY")  # Hugging Face API Key
+HF_API_KEY = os.getenv("HFACCESKEY") 
 
-# ===== Updated Hugging Face Endpoints =====
+# ===== Updated Hugging Face Router Endpoints =====
 HF_IMAGE_URL = "https://router.huggingface.co/hf-inference/stabilityai/stable-diffusion-xl-base-1.0"
-HF_IMAGE_MODIFY_URL = "https://router.huggingface.co/hf-inference/stabilityai/stable-diffusion-xl-refiner-1.0"
+HF_IMAGE_MODIFY_URL = "https://router.huggingface.co/hf-inference/timbrooks/instruct-pix2pix"
 HF_CHAT_URL = "https://router.huggingface.co/hf-inference/mistralai/Mixtral-8x7B-Instruct-v0.1"
 
-# ===== Serve static folder for saved images =====
+# ===== Serve static folder =====
 @app.route("/static/<path:filename>")
 def serve_static(filename):
     return send_from_directory("static", filename)
 
-# ===== ROOT =====
+# ===== Root =====
 @app.route("/", methods=["GET"])
 def home():
-    return "Backend running with Hugging Face Router API!", 200
+    return "✅ Backend running with Hugging Face Router API", 200
 
 
 # ===== IMAGE GENERATION =====
@@ -39,13 +39,21 @@ def image():
     payload = {"inputs": prompt}
 
     try:
-        response = requests.post(HF_IMAGE_URL, json=payload, headers=headers, timeout=60)
+        response = requests.post(HF_IMAGE_URL, json=payload, headers=headers, timeout=90)
         if response.status_code != 200:
-            return jsonify({"error": "Image generation failed", "details": response.text}), response.status_code
+            return jsonify({
+                "error": "Image generation failed",
+                "details": response.text
+            }), response.status_code
 
+        # Try to extract image data (base64 or raw bytes)
         try:
-            image_base64 = response.json()[0]["generated_image"]
-            image_bytes = base64.b64decode(image_base64)
+            result = response.json()
+            if isinstance(result, list) and "generated_image" in result[0]:
+                image_base64 = result[0]["generated_image"]
+                image_bytes = base64.b64decode(image_base64)
+            else:
+                image_bytes = response.content
         except Exception:
             image_bytes = response.content
 
@@ -75,28 +83,33 @@ def image_modify():
 
     os.makedirs("uploads", exist_ok=True)
     os.makedirs("static", exist_ok=True)
-
     upload_path = os.path.join("uploads", f"{uuid.uuid4()}_{file.filename}")
     file.save(upload_path)
 
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-
     try:
         with open(upload_path, "rb") as img_file:
             response = requests.post(
                 HF_IMAGE_MODIFY_URL,
                 headers=headers,
-                files={"image": img_file},
                 data={"inputs": prompt},
+                files={"image": img_file},
                 timeout=90
             )
 
         if response.status_code != 200:
-            return jsonify({"error": "Image modification failed", "details": response.text}), response.status_code
+            return jsonify({
+                "error": "Image modification failed",
+                "details": response.text
+            }), response.status_code
 
         try:
-            image_base64 = response.json()[0]["generated_image"]
-            image_bytes = base64.b64decode(image_base64)
+            result = response.json()
+            if isinstance(result, list) and "generated_image" in result[0]:
+                image_base64 = result[0]["generated_image"]
+                image_bytes = base64.b64decode(image_base64)
+            else:
+                image_bytes = response.content
         except Exception:
             image_bytes = response.content
 
@@ -112,7 +125,7 @@ def image_modify():
         return jsonify({"error": str(e)}), 500
 
 
-# ===== CHAT (now Hugging Face Router) =====
+# ===== CHAT (via Hugging Face Router) =====
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.json
@@ -124,14 +137,15 @@ def chat():
         "Authorization": f"Bearer {HF_API_KEY}",
         "Content-Type": "application/json"
     }
-    payload = {
-        "inputs": prompt
-    }
+    payload = {"inputs": prompt}
 
     try:
         response = requests.post(HF_CHAT_URL, json=payload, headers=headers, timeout=45)
         if response.status_code != 200:
-            return jsonify({"error": "Chat failed", "details": response.text}), response.status_code
+            return jsonify({
+                "error": "Chat failed",
+                "details": response.text
+            }), response.status_code
 
         result = response.json()
         reply = result.get("generated_text") or result[0].get("generated_text", "No response received.")
