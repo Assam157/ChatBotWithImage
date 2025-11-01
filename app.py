@@ -4,7 +4,9 @@ import os, requests
 
 app = Flask(__name__)
 
-# === 🌍 Allow all CORS (with OPTIONS pass) ===
+# ============================================================
+# 🌍 CORS CONFIGURATION
+# ============================================================
 CORS(
     app,
     resources={r"/*": {"origins": "*"}},
@@ -15,6 +17,7 @@ CORS(
 
 OPENROUTER_KEY = os.getenv("OPENAIKEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
 
 # ============================================================
 # 🧠 CHAT — via OpenRouter
@@ -43,7 +46,13 @@ def chat():
             ]
         }
 
-        response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
+        response = requests.post(
+            OPENROUTER_URL,
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
+
         if response.status_code != 200:
             return jsonify({
                 "error": f"OpenRouter request failed ({response.status_code})",
@@ -55,11 +64,11 @@ def chat():
 
         try:
             if "choices" in data and len(data["choices"]) > 0:
-                # Extract actual assistant content safely
                 message_content = data["choices"][0]["message"].get("content", "")
                 if isinstance(message_content, list):
-                    # Sometimes OpenRouter returns structured content
-                    reply = "".join([c.get("text", "") for c in message_content if isinstance(c, dict)])
+                    reply = "".join(
+                        [c.get("text", "") for c in message_content if isinstance(c, dict)]
+                    )
                 else:
                     reply = message_content
         except Exception:
@@ -77,7 +86,7 @@ def chat():
 # ============================================================
 # 🖼️ IMAGE GENERATION — via OpenRouter
 # ============================================================
- @app.route("/generate_image", methods=["POST", "OPTIONS"])
+@app.route("/generate_image", methods=["POST", "OPTIONS"])
 def generate_image():
     if request.method == "OPTIONS":
         return jsonify({"ok": True}), 200
@@ -98,7 +107,7 @@ def generate_image():
             "messages": [
                 {"role": "user", "content": prompt}
             ],
-            "modalities": ["image"]  # ✅ this tells OpenRouter we want an image
+            "modalities": ["image"]  # ✅ tells OpenRouter we want an image
         }
 
         response = requests.post(
@@ -117,7 +126,7 @@ def generate_image():
         data = response.json()
         image_url = None
 
-        # ✅ Extract image URL from multimodal response
+        # ✅ Extract image URL
         if "choices" in data and len(data["choices"]) > 0:
             msg = data["choices"][0]["message"]
             if "content" in msg and isinstance(msg["content"], list):
@@ -160,7 +169,7 @@ def modify_image():
         }
 
         payload = {
-            "model": "black-forest-labs/flux-pro",  # or flux-schnell if faster
+            "model": "black-forest-labs/flux-pro",  # or flux-schnell for faster edits
             "messages": [
                 {
                     "role": "user",
@@ -188,6 +197,7 @@ def modify_image():
         data = response.json()
         modified_image = None
 
+        # ✅ Extract modified image URL
         if "choices" in data and len(data["choices"]) > 0:
             msg = data["choices"][0]["message"]
             if "content" in msg and isinstance(msg["content"], list):
@@ -209,7 +219,7 @@ def modify_image():
 
 
 # ============================================================
-# 🌐 Root Endpoint
+# 🌐 ROOT ENDPOINT
 # ============================================================
 @app.route("/", methods=["GET"])
 def home():
@@ -217,7 +227,7 @@ def home():
 
 
 # ============================================================
-# 🚀 Run App
+# 🚀 RUN APP
 # ============================================================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
